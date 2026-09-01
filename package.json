@@ -1,0 +1,16 @@
+{
+  "name": "ai-haggle-bot",
+  "version": "1.0.0",
+  "description": "AI-переговорщик для торга",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "firebase-admin": "^12.1.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
