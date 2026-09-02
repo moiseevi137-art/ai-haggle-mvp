@@ -1,75 +1,64 @@
-app.post('/api/negotiate', async (req, res) => {
-  const { userId, userMessage, currentWave, itemPrice } = req.body;
-
-  // Исходные данные товара (если не переданы, ставим базовые)
-  const initialPrice = Number(itemPrice) || 5000; 
-  const minAllowedPrice = initialPrice * 0.80; // Минимальный порог: не отдаем со скидкой более 20%
-  
-  let botResponse = "";
-  let nextWave = currentWave || 1;
-  
-  // Пытаемся вытащить цифру (предложение покупателя) из его сообщения
-  const userOfferMatch = userMessage.match(/\d+/);
-  const userOffer = userOfferMatch ? Number(userOfferMatch[0]) : null;
-
-  if (nextWave === 1) {
-    // ПЕРВАЯ ВОЛНА ТОРГА
-    const counterOffer1 = Math.round(initialPrice * 0.93); // Предлагаем скидку 7%
-    
-    if (userOffer && userOffer >= counterOffer1) {
-      botResponse = `Отличное предложение! Я согласен на ${userOffer} руб. Оформляем сделку?`;
-      nextWave = 3; // Сделка закрыта
-    } else {
-      botResponse = `Привет! Предложенная цена маловата. Отдать за столько не могу, но готов немного уступить. Как насчет ${counterOffer1} руб.?`;
-      nextWave = 2; // Переходим ко второй волне
-    }
-  } else if (nextWave === 2) {
-    // ВТОРАЯ ВОЛНА ТОРГА (Финальный раунд)
-    const counterOffer2 = Math.round(initialPrice * 0.88); // Наш крайний шаг: скидка 12%
-    
-    if (userOffer && userOffer >= minAllowedPrice) {
-      botResponse = `Ладно, ваше предложение в ${userOffer} руб. проходит по моему лимиту. По рукам, забирайте!`;
-      nextWave = 3;
-    } else {
-      botResponse = `Слушайте, ${counterOffer2} руб. — это моя самая последняя цена. Ниже продавать совсем невыгодно. Берете?`;
-      nextWave = 3; // Торг окончен в любом случае
-    }
-  } else {
-    // ТОРГ УЖЕ ОКОНЧЕН
-    botResponse = `Мы уже завершили обсуждение этого товара. Напишите по поводу других объявлений!`;
-  }
-
-  // Сохраняем историю торга в Firebase Firestore
-  if (db) {
-    try {
-      await db.collection('haggles').add({
-        userId: userId || "guest",
-        userMessage,
-        botResponse,
-        wave: currentWave,
-        finalPrice: userOffer || initialPrice,
-        timestamp: new Date()
-      });
-    } catch (e) {
-      console.error("Ошибка записи в Firestore:", e);
-    }
-  }
-
-  // Возвращаем ответ фронтенду
-  res.json({ text: botResponse, nextWave });
-});
 const express = require('express');
+const admin = require('firebase-admin');
+
 const app = express();
 const port = process.env.PORT || 10000;
 
-// Базовый ответ для Render и cron-job.org
+// Парсинг JSON-тел запросов (критично для мессенджеров)
+app.use(express.json());
+
+// ====================================================================
+// 1. ИНИЦИАЛИЗАЦИЯ FIREBASE (Без дублей)
+// ====================================================================
+if (admin.apps.length === 0) {
+  // На Render передаем ключ сервисного аккаунта через переменную окружения FIREBASE_SERVICE_ACCOUNT
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+    console.log("Firebase успешно инициализирован через Service Account на Render.");
+  } else {
+    // Резервный вариант (например, для локального тестирования в Test Mode)
+    admin.initializeApp();
+    console.log("Firebase инициализирован в тестовом режиме / по умолчанию.");
+  }
+}
+
+const db = admin.firestore();
+
+// ====================================================================
+// 2. МАРШРУТЫ ДЛЯ СЕРВЕРА (Эндпоинты)
+// ====================================================================
+
+// Сюда стучится cron-job.org каждые 5 минут
 app.get('/', (req, res) => {
+  console.log(`[${new Date().toISOString()}] Ping от cron-job.org получен!`);
   res.send('AI-Haggle Bot успешно запущен и работает!');
 });
 
-app.listen(port, '0.0.0.0', () => {
-  console.log(`Сервер прослушивает порт ${port}`);
+// Сюда будут приходить сообщения от Avito/Instagram (когда настроим вебхуки)
+app.post('/webhook', async (req, res) => {
+  try {
+    const messageData = req.body;
+    
+    // ВСТАВЬТЕ СЮДА ВАШУ ФУНКЦИЮ МАТЕМАТИЧЕСКОГО ТОРГА (Волна 1 и Волна 2):
+    // Пример записи шага торга в Firestore:
+    // await db.collection('haggle_logs').add({
+    //   timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    //   data: messageData
+    // });
+
+    res.sendStatus(200);
+  } catch (error) {
+    console.error("Ошибка при обработке вебхука:", error);
+    res.sendStatus(500);
+  }
 });
 
-// === НИЖЕ ДОЛЖЕН ИДТИ ВАШ ТЕКУЩИЙ КОД ТОРГА И FIREBASE ===
-// (Ваш код из волны 1, волны 2 и подключения к Firestore...)
+// ====================================================================
+// 3. ЗАПУСК ЕДИНОГО СЕРВЕРА (Только один вызов listen на весь проект!)
+// ====================================================================
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Сервер успешно слушает порт ${port} на хосте 0.0.0.0`);
+});
