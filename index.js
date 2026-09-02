@@ -58,3 +58,18 @@ app.post('/api/negotiate', async (req, res) => {
   // Возвращаем ответ фронтенду
   res.json({ text: botResponse, nextWave });
 });
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 10000;
+
+// Базовый ответ для Render и cron-job.org
+app.get('/', (req, res) => {
+  res.send('AI-Haggle Bot успешно запущен и работает!');
+});
+
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Сервер прослушивает порт ${port}`);
+});
+
+// === НИЖЕ ДОЛЖЕН ИДТИ ВАШ ТЕКУЩИЙ КОД ТОРГА И FIREBASE ===
+// (Ваш код из волны 1, волны 2 и подключения к Firestore...)
