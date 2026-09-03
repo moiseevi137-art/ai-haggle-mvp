@@ -1,10 +1,32 @@
-const express = require('express');
-const admin = require('firebase-admin');
+// ====================================================================
+// 1. ИНИЦИАЛИЗАЦИЯ FIREBASE (Исправленная и надежная)
+// ====================================================================
+if (admin.apps.length === 0) {
+  const projectId = process.env.FIREBASE_PROJECT_ID || 'my-replit-app-5d3e3';
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
-const app = express();
-const port = process.env.PORT || 10000;
+  if (clientEmail && privateKey) {
+    try {
+      admin.initializeApp({
+        credential: admin.credential.cert({
+          projectId: projectId,
+          clientEmail: clientEmail,
+          privateKey: privateKey.replace(/\\n/g, '\n')
+        })
+      });
+      console.log("Firebase успешно инициализирован через раздельные переменные на Render.");
+    } catch (error) {
+      console.error("Ошибка при инициализации Firebase cert:", error);
+      res.sendStatus(500);
+    }
+  } else {
+    // Если ключей нет, используем аварийную инициализацию с явным ID проекта
+    admin.initializeApp({ projectId: projectId });
+    console.log(`Предупреждение: Ключи не найдены. Firebase запущен в ограниченном режиме для проекта ${projectId}`);
+  }
+}
 
-app.use(express.json());
 
 // ====================================================================
 // 1. ИНИЦИАЛИЗАЦИЯ FIREBASE (Безопасная через Environment Variables)
