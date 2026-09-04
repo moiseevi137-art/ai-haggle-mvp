@@ -5,29 +5,31 @@ const app = express();
 app.use(express.json());
 
 // ====================================================================
-// 1. ИНИЦИАЛИЗАЦИЯ FIREBASE (Надежная и чистая)
+// 1. ИНИЦИАЛИЗАЦИЯ FIREBASE (Надёжная через одну переменную JSON)
 // ====================================================================
 if (admin.apps.length === 0) {
-  const projectId = process.env.FIREBASE_PROJECT_ID || 'haggle-bot-2026';
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
-
-  if (clientEmail && privateKey) {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     try {
+      // Очищаем строку от возможных косяков мобильного копирования и парсим в JSON
+      const jsonString = process.env.FIREBASE_SERVICE_ACCOUNT.trim();
+      const serviceAccount = JSON.parse(jsonString);
+      
+      // Принудительно чиним переносы строк внутри самого ключа PEM
+      if (serviceAccount.private_key) {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+      }
+
       admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId: projectId,
-          clientEmail: clientEmail,
-          privateKey: privateKey.replace(/\\n/g, '\n')
-        })
+        credential: admin.credential.cert(serviceAccount)
       });
-      console.log("Firebase успешно инициализирован через раздельные переменные на Render.");
-    } catch (error) {
-      console.error("Ошибка при инициализации Firebase cert:", error);
+      console.log("Firebase успешно инициализирован через единый JSON на Render.");
+    } catch (parseError) {
+      console.error("Ошибка парсинга JSON-ключа Firebase:", parseError.message);
+      admin.initializeApp({ projectId: 'haggle-bot-2026' });
     }
   } else {
-    admin.initializeApp({ projectId: projectId });
-    console.log(`Предупреждение: Ключи не найдены. Firebase запущен в ограниченном режиме для проекта ${projectId}`);
+    admin.initializeApp({ projectId: 'haggle-bot-2026' });
+    console.log("Предупреждение: Переменная FIREBASE_SERVICE_ACCOUNT не найдена. Запущено по умолчанию.");
   }
 }
 
@@ -90,7 +92,7 @@ app.post('/webhook', async (req, res) => {
       timestamp: admin.firestore.FieldValue.serverTimestamp()
     };
 
-    // Записываем лог торга в новую коллекцию "haggles" в Firestore
+    // Запись лога в новую базу Firestore
     await db.collection('haggles').add(logData);
     console.log(`[Firestore] Лог торга для чата ${chatId} успешно сохранен.`);
 
