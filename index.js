@@ -1,8 +1,14 @@
+const express = require('express');
+const admin = require('firebase-admin');
+const app = express();
+
+app.use(express.json());
+
 // ====================================================================
-// 1. ИНИЦИАЛИЗАЦИЯ FIREBASE (Исправленная и надежная)
+// 1. ИНИЦИАЛИЗАЦИЯ FIREBASE (Надежная и чистая)
 // ====================================================================
 if (admin.apps.length === 0) {
-  const projectId = process.env.FIREBASE_PROJECT_ID || 'my-replit-app-5d3e3';
+  const projectId = process.env.FIREBASE_PROJECT_ID || 'haggle-bot-2026';
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   const privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
@@ -18,44 +24,17 @@ if (admin.apps.length === 0) {
       console.log("Firebase успешно инициализирован через раздельные переменные на Render.");
     } catch (error) {
       console.error("Ошибка при инициализации Firebase cert:", error);
-      res.sendStatus(500);
     }
   } else {
-    // Если ключей нет, используем аварийную инициализацию с явным ID проекта
     admin.initializeApp({ projectId: projectId });
     console.log(`Предупреждение: Ключи не найдены. Firebase запущен в ограниченном режиме для проекта ${projectId}`);
-  }
-}
-
-
-// ====================================================================
-// 1. ИНИЦИАЛИЗАЦИЯ FIREBASE (Безопасная через Environment Variables)
-// ====================================================================
-if (admin.apps.length === 0) {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    try {
-      // Автоматически чиним переносы строк, которые ломает мобильный браузер
-      const cleanKey = process.env.FIREBASE_SERVICE_ACCOUNT.replace(/\\n/g, '\n');
-      const serviceAccount = JSON.parse(cleanKey);
-      
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-      });
-      console.log("Firebase успешно инициализирован через переменные окружения на Render.");
-    } catch (parseError) {
-      console.error("Ошибка чтения JSON-ключа из настроек Render:", parseError);
-      admin.initializeApp();
-    }
-  } else {
-    admin.initializeApp();
-    console.log("Firebase инициализирован по умолчанию (переменная не найдена).");
   }
 }
 
 const db = admin.firestore();
 
 // ====================================================================
-// ВСПУМОГАТЕЛЬНАЯ ФУНКЦИЯ: АЛГОРИТМ ТОРГА (2 ВОЛНЫ)
+// 2. ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: АЛГОРИТМ ТОРГА (2 ВОЛНЫ)
 // ====================================================================
 function calculateHaggleStep(initialPrice, currentWave, currentOffer) {
   const floorPrice = initialPrice * 0.80; 
@@ -80,12 +59,12 @@ function calculateHaggleStep(initialPrice, currentWave, currentOffer) {
 }
 
 // ====================================================================
-// 2. МАРШРУТЫ ДЛЯ СЕРВЕРА (Эндпоинты)
+// 3. МАРШРУТЫ ДЛЯ СЕРВЕРА (Эндпоинты)
 // ====================================================================
 
 app.get('/', (req, res) => {
   console.log(`[${new Date().toISOString()}] Ping от cron-job.org получен!`);
-  res.send('AI-Haggle Bot успешно запущен и работает!');
+  res.send('AI-Haggle Bot успешно запущен и работает с новой базой!');
 });
 
 app.post('/webhook', async (req, res) => {
@@ -111,25 +90,22 @@ app.post('/webhook', async (req, res) => {
       timestamp: admin.firestore.FieldValue.serverTimestamp()
     };
 
-    // Запись шага торга в Firebase Firestore
-    const docRef = await db.collection('haggle_logs').add(logData);
-    console.log(`[Торг] Шаг записан в Firestore. ID документа: ${docRef.id}`);
+    // Записываем лог торга в новую коллекцию "haggles" в Firestore
+    await db.collection('haggles').add(logData);
+    console.log(`[Firestore] Лог торга для чата ${chatId} успешно сохранен.`);
 
     res.status(200).json({
       success: true,
-      message: `Робот рассчитал цену для Волны ${currentWave}`,
-      recommendedOffer: ourPriceOffer
+      ourOffer: ourPriceOffer
     });
 
   } catch (error) {
-    console.error("Ошибка при обработке вебхука торга:", error);
-    res.sendStatus(500);
+    console.error("Ошибка внутри вебхука:", error);
+    res.status(500).send("Внутренняя ошибка сервера");
   }
 });
 
-// ====================================================================
-// 3. ЗАПУСК ЕДИНОГО СЕРВЕРА
-// ====================================================================
-app.listen(port, '0.0.0.0', () => {
-  console.log(`Сервер успешно слушает порт ${port} на хосте 0.0.0.0`);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Сервер запущен на порту ${PORT}`);
 });
