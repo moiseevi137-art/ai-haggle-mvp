@@ -172,8 +172,14 @@ app.listen(PORT, async () => {
   if (TOKEN) {
     try {
       const fullWebhookUrl = `${RENDER_URL}${TELEGRAM_WEBHOOK_PATH}`;
-      // ИСПРАВЛЕНО: Точный и правильный адрес API Telegram
-      const response = await axios.get(`https://telegram.org{TOKEN}/setWebhook?url=${fullWebhookUrl}`);
+      
+      // Полностью чистый и фиксированный URL к API Telegram без ручных склеек
+      const telegramApiUrl = `https://telegram.org{TOKEN}/setWebhook`;
+      
+      const response = await axios.post(telegramApiUrl, {
+        url: fullWebhookUrl
+      });
+      
       console.log(`[Telegram Webhook] Авто-настройка:`, response.data.description || 'Успешно поставлен');
     } catch (err) {
       console.error(`[Telegram Webhook] Ошибка авто-настройки:`, err.message);
