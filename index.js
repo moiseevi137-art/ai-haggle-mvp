@@ -1,13 +1,13 @@
 const express = require('express');
 const admin = require('firebase-admin');
-const { Telegraf } = require('telegraf'); // Подключаем Telegraf
+const { Telegraf } = require('telegraf'); 
 const app = express();
 
 app.use(express.json());
 
 // Конфигурация Telegram-бота из переменных окружения Render
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const RENDER_URL = 'https://ai-haggle-mvp-service.onrender.com'; 
+const RENDER_URL = 'https://onrender.com'; 
 const TELEGRAM_WEBHOOK_PATH = `/webhook/${TOKEN}`;
 
 // Проверка токена
@@ -79,43 +79,41 @@ function calculateHaggleStep(initialPrice, currentWave, currentOffer) {
 
 // Обработка команды /start
 bot.start(async (ctx) => {
-try {
-const chatId = ctx.chat.id;
-const firstName = ctx.from.first_name || 'Пользователь'; 
+  try {
+    const chatId = ctx.chat.id;
+    const firstName = ctx.from.first_name || 'Пользователь';
 
-// Исправлено: Убрали ** вокруг юзернейма, чтобы не ломать разметку Telegram
-const welcomeText =
-Привет, ${firstName}! 🧠\n\n +
-Добро пожаловать в MVP ИИ-помощника торгов ai_haggle_mvp_bot.\n\n +
-Доступные ИИ-модули:\n +
-➡️ Текст: DeepSeek & ChatGPT\n +
-➡️ Графика: NanoBanana\n\n +
-Отправьте мне параметры торга или ваше предложение!;
+    const welcomeText = 
+      `Привет, ${firstName}! 🧠\n\n` +
+      `Добро пожаловать в MVP ИИ-помощника торгов ai_haggle_mvp_bot.\n\n` +
+      `Доступные ИИ-модули:\n` +
+      `➡️ Текст: DeepSeek & ChatGPT\n` +
+      `➡️ Графика: NanoBanana\n\n` +
+      `Отправьте мне параметры торга или ваше предложение!`;
 
-// Исправлено: Используем простой ctx.reply вместо replyWithMarkdown для стабильности
-await ctx.reply(welcomeText);
+    await ctx.reply(welcomeText);
 
-// Сохраняем логи в Firestore
-await db.collection('user_logs').doc(String(chatId)).set({
-firstName: firstName,
-status: 'started',
-timestamp: admin.firestore.FieldValue.serverTimestamp()
-}, { merge: true });
+    // Сохраняем логи в Firestore
+    await db.collection('user_logs').doc(String(chatId)).set({
+      firstName: firstName,
+      status: 'started',
+      timestamp: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
 
-console.log([Firestore] Пользователь ${chatId} залогирован.);
-
-} catch (error) {
-console.error("Ошибка в боте при команде /start:", error.message);
-}
-}); 
+    console.log(`[Firestore] Пользователь ${chatId} залогирован.`);
+  } catch (error) {
+    console.error("Ошибка в боте при команде /start:", error.message);
+  }
+});
 
 // Ответ на любое другое текстовое сообщение
 bot.on('text', async (ctx) => {
-await ctx.reply(Принял ваш запрос! Модули DeepSeek/ChatGPT готовятся обработать сценарий торга...);
-}); 
+  await ctx.reply(`Принял ваш запрос! Модули DeepSeek/ChatGPT готовятся обработать сценарий торга...`);
+});
 
 // Интегрируем обработчик Telegraf в Express как Middleware
 app.use(bot.webhookCallback(TELEGRAM_WEBHOOK_PATH));
+
 // ====================================================================
 // 4. МАРШРУТЫ ДЛЯ СЕРВЕРА (Эндпоинты Express)
 // ====================================================================
@@ -140,40 +138,21 @@ app.post('/webhook', async (req, res) => {
       parseFloat(currentOffer)
     );
 
-    const logData = {
-      chatId: chatId,
-      initialPrice: initialPrice,
-      wave: currentWave,
-      theirOffer: currentOffer,
-      ourCounterOffer: ourPriceOffer,
-      timestamp: admin.firestore.FieldValue.serverTimestamp()
-    };
-
-    await db.collection('haggles').add(logData);
-    res.status(200).json({ success: true, ourOffer: ourPriceOffer });
+    res.status(200).json({ status: "success", ourPriceOffer });
   } catch (error) {
-    console.error("Ошибка внутри старого вебхука:", error);
-    res.status(500).send("Внутренняя ошибка сервера");
+    res.status(500).send(error.message);
   }
 });
 
-// ====================================================================
-// 5. ЗАПУСК СЕРВЕРА И АВТО-УСТАНОВКА ВЕБХУКА ЧЕРЕЗ TELEGRAF
-// ====================================================================
+// Запуск сервера и автоматическая привязка вебхука в Telegram
 const PORT = process.env.PORT || 10000;
-
 app.listen(PORT, async () => {
   console.log(`Сервер запущен на порту ${PORT}`);
-  
   try {
-    // Формируем полный URL для Telegram: https://onrender.com
     const fullWebhookUrl = `${RENDER_URL}${TELEGRAM_WEBHOOK_PATH}`;
-    
-    // Передаем этот URL серверам Telegram
     await bot.telegram.setWebhook(fullWebhookUrl);
     console.log(`[Telegraf] Вебхук успешно зарегистрирован на адрес: ${fullWebhookUrl}`);
   } catch (error) {
     console.error("Ошибка регистрации вебхука в Telegram:", error.message);
   }
 });
-
