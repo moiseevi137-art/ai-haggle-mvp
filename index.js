@@ -158,16 +158,20 @@ app.post('/webhook', async (req, res) => {
 // ====================================================================
 // 5. ЗАПУСК СЕРВЕРА И АВТО-УСТАНОВКА ВЕБХУКА ЧЕРЕЗ TELEGRAF
 // ====================================================================
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
+
 app.listen(PORT, async () => {
   console.log(`Сервер запущен на порту ${PORT}`);
   
   try {
+    // Формируем полный URL для Telegram: https://onrender.com
     const fullWebhookUrl = `${RENDER_URL}${TELEGRAM_WEBHOOK_PATH}`;
-    // Telegraf сам делает безопасный и правильный запрос к Telegram API
+    
+    // Передаем этот URL серверам Telegram
     await bot.telegram.setWebhook(fullWebhookUrl);
     console.log(`[Telegraf] Вебхук успешно зарегистрирован на адрес: ${fullWebhookUrl}`);
-  } catch (err) {
-    console.error(`[Telegraf] Ошибка автоматической установки вебхука:`, err.message);
+  } catch (error) {
+    console.error("Ошибка регистрации вебхука в Telegram:", error.message);
   }
 });
+
