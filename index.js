@@ -7,7 +7,8 @@ app.use(express.json());
 
 // Конфигурация Telegram-бота из переменных окружения Render
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const RENDER_URL = 'https://onrender.com'; 
+const RENDER_URL = 'https://ai-haggle-mvp-service.onrender.com'; 
+
 const TELEGRAM_WEBHOOK_PATH = `/webhook/${TOKEN}`;
 
 // Проверка токена
