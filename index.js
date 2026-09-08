@@ -79,41 +79,43 @@ function calculateHaggleStep(initialPrice, currentWave, currentOffer) {
 
 // Обработка команды /start
 bot.start(async (ctx) => {
-  try {
-    const chatId = ctx.chat.id;
-    const firstName = ctx.from.first_name || 'Пользователь';
+try {
+const chatId = ctx.chat.id;
+const firstName = ctx.from.first_name || 'Пользователь'; 
 
-    const welcomeText = 
-      `Привет, ${firstName}! 🧠\n\n` +
-      `Добро пожаловать в MVP ИИ-помощника торгов **ai_haggle_mvp_bot**.\n\n` +
-      `Доступные ИИ-модули:\n` +
-      `➡️ Текст: DeepSeek & ChatGPT\n` +
-      `➡️ Графика: NanoBanana\n\n` +
-      `Отправьте мне параметры торга или ваше предложение!`;
+// Исправлено: Убрали ** вокруг юзернейма, чтобы не ломать разметку Telegram
+const welcomeText =
+Привет, ${firstName}! 🧠\n\n +
+Добро пожаловать в MVP ИИ-помощника торгов ai_haggle_mvp_bot.\n\n +
+Доступные ИИ-модули:\n +
+➡️ Текст: DeepSeek & ChatGPT\n +
+➡️ Графика: NanoBanana\n\n +
+Отправьте мне параметры торга или ваше предложение!;
 
-    await ctx.replyWithMarkdown(welcomeText);
+// Исправлено: Используем простой ctx.reply вместо replyWithMarkdown для стабильности
+await ctx.reply(welcomeText);
 
-    // Сохраняем логи в Firestore
-    await db.collection('user_logs').doc(String(chatId)).set({
-      firstName: firstName,
-      status: 'started',
-      timestamp: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+// Сохраняем логи в Firestore
+await db.collection('user_logs').doc(String(chatId)).set({
+firstName: firstName,
+status: 'started',
+timestamp: admin.firestore.FieldValue.serverTimestamp()
+}, { merge: true });
 
-    console.log(`[Firestore] Пользователь ${chatId} залогирован.`);
-  } catch (error) {
-    console.error("Ошибка в боте при команде /start:", error.message);
-  }
-});
+console.log([Firestore] Пользователь ${chatId} залогирован.);
+
+} catch (error) {
+console.error("Ошибка в боте при команде /start:", error.message);
+}
+}); 
 
 // Ответ на любое другое текстовое сообщение
 bot.on('text', async (ctx) => {
-  await ctx.reply(`Принял ваш запрос! Модули DeepSeek/ChatGPT готовятся обработать сценарий торга...`);
-});
+await ctx.reply(Принял ваш запрос! Модули DeepSeek/ChatGPT готовятся обработать сценарий торга...);
+}); 
 
 // Интегрируем обработчик Telegraf в Express как Middleware
 app.use(bot.webhookCallback(TELEGRAM_WEBHOOK_PATH));
-
 // ====================================================================
 // 4. МАРШРУТЫ ДЛЯ СЕРВЕРА (Эндпоинты Express)
 // ====================================================================
