@@ -16,7 +16,7 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 // Инициализация бота с вашим токеном напрямую
-const MY_BOT_TOKEN = 'ВАШ_ТОКЕН_ИЗ_BOTFATHER'; 
+const MY_BOT_TOKEN = '8982856560:AAEbZKCsfF4co_Fyy3IdTlG6-USxzVnTVmc'; 
 
 const bot = new Telegraf(MY_BOT_TOKEN);
 const TELEGRAM_WEBHOOK_PATH = `/webhook/${MY_BOT_TOKEN}`;
