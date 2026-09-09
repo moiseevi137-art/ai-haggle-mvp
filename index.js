@@ -93,12 +93,12 @@ bot.on('text', async (ctx) => {
       await ctx.reply(`🔍 Анализирую объект торга... Модули DeepSeek/ChatGPT составляют стратегию снижения цены.`);
       await humanDelay(); // Защитная пауза
 
-      // Логика симулятора: генерируем случайную реалистичную скидку
+            // Логика симулятора: генерируем случайную реалистичную скидку
       const initialPrice = Math.floor(Math.random() * (50000 - 5000) + 5000); // Исходная цена лота (от 5 до 50к)
       const discountPercent = Math.random() > 0.5 ? 12 : 8; // Скидка 8% или 12%
       const savedMoney = Math.round(initialPrice * (discountPercent / 100)); // Сколько сэкономили
       const targetPrice = initialPrice - savedMoney; // Итоговая цена для покупки
-      const ourCommission = Math.round(savedMoney * 0.30; // Наши 30% от сэкономленного
+      const ourCommission = Math.round(savedMoney * 0.30); // <<< ВОТ ЗДЕСЬ СКОБКА ИСПРАВЛЕНА! ✅
 
       // Список живых человеческих аргументов
       const argumentsList = [
