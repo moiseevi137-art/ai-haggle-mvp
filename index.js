@@ -78,7 +78,7 @@ function calculateHaggleStep(initialPrice, currentWave, currentOffer) {
 // 3. ЛОГИКА TELEGRAM БОТА (Через Telegraf)
 // ====================================================================
 
-const { Telegraf } = require('telegraf');
+const { Telegraf } = require('telegraf'); // Объявлено строго 1 раз!
 const express = require('express');
 const admin = require('firebase-admin');
 const Bottleneck = require('bottleneck');
@@ -177,6 +177,7 @@ app.use(bot.webhookCallback(TELEGRAM_WEBHOOK_PATH));
 
 // Базовый эндпоинт для проверки работы сервера
 app.get('/', (req, res) => {
+  console.log(`[${new Date().toISOString()}] Ping от cron-job.org получен`);
   res.send('Сервер торга MVP работает с защитой Rate Limiting!');
 });
 
@@ -184,6 +185,7 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Сервер запущен на порту ${PORT} с защитой Bottleneck`);
 });
+
 
 
 // ====================================================================
