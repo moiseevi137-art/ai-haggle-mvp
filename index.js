@@ -81,7 +81,7 @@ function calculateHaggleStep(initialPrice, currentWave, currentOffer) {
 const { Telegraf } = require('telegraf');
 const express = require('express');
 const admin = require('firebase-admin');
-const Bottleneck = require('bottleneck'); // Наша новая защита от блокировок площадок
+const Bottleneck = require('bottleneck');
 
 // Инициализация Express
 const app = express();
@@ -99,15 +99,15 @@ const db = admin.firestore();
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const TELEGRAM_WEBHOOK_PATH = `/webhook/${process.env.BOT_TOKEN}`;
 
-// НАСТРОЙКА ИНТЕРВАЛОВ И ОЧЕРЕДИ (Защита от фрод-систем Авито/WB/Ozon)
+// НАСТРОЙКА ИНТЕРВАЛОВ И ОЧЕРЕДИ
 const limiter = new Bottleneck({
-  maxConcurrent: 1,                 // Обрабатываем строго по 1 запросу за раз
-  minTime: 1500,                    // Пауза между запросами — минимум 1.5 секунды
-  highWater: 50,                    // Ограничение длины очереди
-  strategy: Bottleneck.strategy.LEAK // Мягкий сброс старых лимитов при перегрузке
+  maxConcurrent: 1,
+  minTime: 1500,
+  highWater: 50,
+  strategy: Bottleneck.strategy.LEAK
 });
 
-// Имитация паузы "как у человека" (от 0 до 2 секунд дополнительно)
+// Имитация паузы "как у человека"
 const humanDelay = () => new Promise(resolve => setTimeout(resolve, Math.random() * 2000));
 
 // === ОБРАБОТЧИКИ КОМАНД ===
@@ -126,10 +126,8 @@ bot.start(async (ctx) => {
       `➡️ Графика: NanoBanana\n\n` +
       `Отправьте мне параметры торга или ваше предложение!`;
 
-    // Отправляем ответ через защитный лимитер
     await limiter.schedule(() => ctx.reply(welcomeText));
 
-    // Сохраняем логи в Firestore
     await db.collection('user_logs').doc(String(chatId)).set({
       firstName: firstName,
       status: 'started',
@@ -156,18 +154,16 @@ bot.help(async (ctx) => {
       `🎨 *NanoBanana* — для визуализации графики/лотов\n\n` +
       `💡 _Если бот ведет себя некорректно, отправьте /start для перезапуска сессии._`;
 
-    // Отправляем справку через защитный лимитер
     await limiter.schedule(() => ctx.replyWithMarkdown(helpMessage));
   } catch (error) {
     console.error('Ошибка при отправке справки:', error.message);
   }
 });
 
-// Ответ на любое другое текстовое сообщение (с имитацией человека)
+// Ответ на любое другое текстовое сообщение
 bot.on('text', async (ctx) => {
   try {
     await limiter.schedule(async () => {
-      // Имитируем, что бот думает/вводит текст, чтобы площадки не забанили IP
       await humanDelay(); 
       await ctx.reply(`Принял ваш запрос! Модули DeepSeek/ChatGPT готовы в безопасном режиме обработать сценарий торга...`);
     });
