@@ -15,9 +15,12 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
-// Инициализация бота
-const bot = new Telegraf(process.env.BOT_TOKEN);
-const TELEGRAM_WEBHOOK_PATH = `/webhook/${process.env.BOT_TOKEN}`;
+// Инициализация бота с вашим токеном напрямую
+const MY_BOT_TOKEN = 'ВАШ_ТОКЕН_ИЗ_BOTFATHER'; 
+
+const bot = new Telegraf(MY_BOT_TOKEN);
+const TELEGRAM_WEBHOOK_PATH = `/webhook/${MY_BOT_TOKEN}`;
+
 
 // НАСТРОЙКА ИНТЕРВАЛОВ И ОЧЕРЕДИ (Rate Limiting)
 const limiter = new Bottleneck({
