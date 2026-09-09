@@ -109,12 +109,12 @@ app.listen(PORT, async () => {
   console.log(`Сервер запущен на порту ${PORT} с защитой Bottleneck`);
   
   try {
-    // Явно указываем правильный и полный адрес вашего сервера
-    const SERVER_URL = 'https://onrender.com';
-    const webhookUrl = `${SERVER_URL}/webhook/${MY_BOT_TOKEN}`; // Используем именно ваш токен
+    // Вручную прописываем точный и полный URL вашего сервера на Render
+    const fullServerUrl = 'https://ai-haggle-mvp-service.onrender.com';
+    const webhookUrl = `${fullServerUrl}/webhook/${MY_BOT_TOKEN}`;
     
     await bot.telegram.setWebhook(webhookUrl);
-    console.log(`[Telegram] Вебхук автоматически обновлен: ${webhookUrl}`);
+    console.log(`[Telegram] Вебхук автоматически обновлен на правильный URL: ${webhookUrl}`);
   } catch (error) {
     console.error('[Telegram] Ошибка авто-установки вебхука:', error.message);
   }
