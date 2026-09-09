@@ -101,7 +101,19 @@ app.get('/', (req, res) => {
   res.send('Сервер торга MVP работает с защитой Rate Limiting!');
 });
 
-// Запуск сервера
-app.listen(PORT, () => {
+// ЗАПУСК СЕРВЕРА И АВТОМАТИЧЕСКАЯ УСТАНОВКА ВЕБХУКА
+app.listen(PORT, async () => {
   console.log(`Сервер запущен на порту ${PORT} с защитой Bottleneck`);
+  
+  try {
+    // Бот сам регистрирует свой адрес в Telegram при старте сервера!
+    const SERVER_URL = 'https://onrender.com';
+    const webhookUrl = `${SERVER_URL}/webhook/${process.env.BOT_TOKEN}`;
+    
+    await bot.telegram.setWebhook(webhookUrl);
+    console.log(`[Telegram] Вебхук автоматически обновлен: ${webhookUrl}`);
+  } catch (error) {
+    console.error('[Telegram] Ошибка авто-установки вебхука:', error.message);
+  }
 });
+
