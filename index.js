@@ -129,15 +129,18 @@ app.get('/', (req, res) => {
   res.send('Сервер торга MVP работает с реальным ИИ DeepSeek!');
 });
 
-// Запуск сервера
+// ЗАПУСК СЕРВЕРА И АВТОМАТИЧЕСКАЯ УСТАНОВКА ВЕБХУКА
 app.listen(PORT, async () => {
   console.log(`Сервер запущен на порту ${PORT} с ИИ-лимитером`);
+  
   try {
-    const fullServerUrl = 'https://onrender.com';
-    const webhookUrl = `${fullServerUrl}/webhook/${MY_BOT_TOKEN}`;
+    // Жестко фиксируем правильную и полную ссылку вашего сервера Render
+    const absoluteServerUrl = 'https://ai-haggle-mvp-service.onrender.com';
+    const webhookUrl = `${absoluteServerUrl}/webhook/${MY_BOT_TOKEN}`;
+    
     await bot.telegram.setWebhook(webhookUrl);
-    console.log(`[Telegram] Вебхук обновлен: ${webhookUrl}`);
+    console.log(`[Telegram] Вебхук окончательно обновлен на полный URL: ${webhookUrl}`);
   } catch (error) {
-    console.error('[Telegram] Ошибка вебхука:', error.message);
+    console.error('[Telegram] Ошибка авто-установки вебхука:', error.message);
   }
 });
