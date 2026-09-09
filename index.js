@@ -89,18 +89,15 @@ bot.on('text', async (ctx) => {
 
   try {
     await limiter.schedule(async () => {
-      // Показываем пользователю, что "ИИ думает"
       await ctx.reply(`🔍 Анализирую объект торга... Модули DeepSeek/ChatGPT составляют стратегию снижения цены.`);
-      await humanDelay(); // Защитная пауза
+      await humanDelay(); 
 
-            // Логика симулятора: генерируем случайную реалистичную скидку
-      const initialPrice = Math.floor(Math.random() * (50000 - 5000) + 5000); // Исходная цена лота (от 5 до 50к)
-      const discountPercent = Math.random() > 0.5 ? 12 : 8; // Скидка 8% или 12%
-      const savedMoney = Math.round(initialPrice * (discountPercent / 100)); // Сколько сэкономили
-      const targetPrice = initialPrice - savedMoney; // Итоговая цена для покупки
-      const ourCommission = Math.round(savedMoney * 0.30); // <<< ВОТ ЗДЕСЬ СКОБКА ИСПРАВЛЕНА! ✅
+      const initialPrice = Math.floor(Math.random() * (50000 - 5000) + 5000); 
+      const discountPercent = Math.random() > 0.5 ? 12 : 8; 
+      const savedMoney = Math.round(initialPrice * (discountPercent / 100)); 
+      const targetPrice = initialPrice - savedMoney; 
+      const ourCommission = Math.round(savedMoney * 0.30); // Исправленная скобка! ✅
 
-      // Список живых человеческих аргументов
       const argumentsList = [
         "• Готов забрать товар сегодня самовывозом в течение часа.",
         "• На аналогичных площадках цена ниже, но готов купить у вас прямо сейчас.",
@@ -122,7 +119,6 @@ bot.on('text', async (ctx) => {
 
       await ctx.replyWithMarkdown(responseText);
 
-      // Записываем лог успешного торга в Firestore для статистики
       await db.collection('bids_history').add({
         chatId: chatId,
         userQuery: userText,
@@ -146,15 +142,15 @@ app.get('/', (req, res) => {
   res.send('Сервер торга MVP работает с защитой Rate Limiting!');
 });
 
-// Запуск сервера
+// ЗАПУСК СЕРВЕРА И УСТАНОВКА ВЕБХУКА НА ПОЛНЫЙ URL
 app.listen(PORT, async () => {
   console.log(`Сервер запущен на порту ${PORT} с защитой Bottleneck`);
   
   try {
-    const fullServerUrl = 'https://onrender.com';
+    const fullServerUrl = 'https://ai-haggle-mvp-service.onrender.com';
     const webhookUrl = `${fullServerUrl}/webhook/${MY_BOT_TOKEN}`;
     await bot.telegram.setWebhook(webhookUrl);
-    console.log(`[Telegram] Вебхук автоматически обновлен на правильный URL: ${webhookUrl}`);
+    console.log(`[Telegram] Вебхук принудительно обновлен на полный URL: ${webhookUrl}`);
   } catch (error) {
     console.error('[Telegram] Ошибка авто-установки вебхука:', error.message);
   }
