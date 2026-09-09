@@ -109,9 +109,9 @@ app.listen(PORT, async () => {
   console.log(`Сервер запущен на порту ${PORT} с защитой Bottleneck`);
   
   try {
-    // Бот сам регистрирует свой адрес в Telegram при старте сервера!
+    // Явно указываем правильный и полный адрес вашего сервера
     const SERVER_URL = 'https://onrender.com';
-    const webhookUrl = `${SERVER_URL}/webhook/${process.env.BOT_TOKEN}`;
+    const webhookUrl = `${SERVER_URL}/webhook/${MY_BOT_TOKEN}`; // Используем именно ваш токен
     
     await bot.telegram.setWebhook(webhookUrl);
     console.log(`[Telegram] Вебхук автоматически обновлен: ${webhookUrl}`);
@@ -119,4 +119,5 @@ app.listen(PORT, async () => {
     console.error('[Telegram] Ошибка авто-установки вебхука:', error.message);
   }
 });
+
 
