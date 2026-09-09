@@ -2,6 +2,7 @@ const { Telegraf } = require('telegraf');
 const express = require('express');
 const admin = require('firebase-admin');
 const Bottleneck = require('bottleneck');
+const OpenAI = require('openai'); // Подключаем ИИ
 
 // Инициализация Express
 const app = express();
@@ -15,13 +16,18 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
-// Инициализация бота с вашим токеном напрямую
-const MY_BOT_TOKEN = '8982856560:AAEbZKCsfF4co_Fyy3IdTlG6-USxzVnTVmc'; 
+// Инициализация ИИ DeepSeek (через OpenAI SDK)
+const openai = new OpenAI({
+  baseURL: 'https://deepseek.com', // Экономичный и мощный DeepSeek
+  apiKey: process.env.DEEPSEEK_API_KEY   // Берем ключ из настроек Render
+});
 
+// Инициализация бота
+const MY_BOT_TOKEN = '8982856560:AAEbZKCsfF4co_Fyy3IdTlG6-USxzVnTVmc'; 
 const bot = new Telegraf(MY_BOT_TOKEN);
 const TELEGRAM_WEBHOOK_PATH = `/webhook/${MY_BOT_TOKEN}`;
 
-// НАСТРОЙКА ИНТЕРВАЛОВ И ОЧЕРЕДИ (Rate Limiting)
+// Настройка очередей (Rate Limiting)
 const limiter = new Bottleneck({
   maxConcurrent: 1,
   minTime: 1500,
@@ -29,109 +35,90 @@ const limiter = new Bottleneck({
   strategy: Bottleneck.strategy.LEAK
 });
 
-// Имитация человеческой паузы
-const humanDelay = () => new Promise(resolve => setTimeout(resolve, Math.random() * 2000));
-
 // === ОБРАБОТЧИКИ КОМАНД ===
 
-// Команда /start
 bot.start(async (ctx) => {
   try {
     const chatId = ctx.chat.id;
     const firstName = ctx.from.first_name || 'Пользователь';
-
-    const welcomeText = 
-      `Привет, ${firstName}! 🧠\n\n` +
-      `Добро пожаловать в MVP ИИ-помощника торгов ai_haggle_mvp_bot.\n\n` +
-      `Доступные ИИ-модули:\n` +
-      `➡️ Текст: DeepSeek & ChatGPT\n` +
-      `➡️ Графика: NanoBanana\n\n` +
-      `Отправьте мне ссылку на товар Авито/WB или ваши параметры, чтобы начать торг и сбить цену!`;
-
+    const welcomeText = `Привет, ${firstName}! 🧠\n\nОтправьте мне ссылку на товар (Авито/WB/Ozon) или опишите ситуацию. Настоящий ИИ составит убойный аргумент для торга и собьет цену!`;
     await limiter.schedule(() => ctx.reply(welcomeText));
-
-    await db.collection('user_logs').doc(String(chatId)).set({
-      firstName: firstName,
-      status: 'started',
-      timestamp: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-
-    console.log(`[Firestore] Пользователь ${chatId} залогирован.`);
   } catch (error) {
-    console.error("Ошибка в команде /start:", error.message);
+    console.error("Ошибка в /start:", error.message);
   }
 });
 
-// Команда /help
 bot.help(async (ctx) => {
   try {
-    const helpMessage = 
-      `📖 *Справка по использованию бота*\n\n` +
-      `Этот бот создан для проведения прозрачных и быстрых торгов между покупателями и продавцами.\n\n` +
-      `*Доступные команды:*\n` +
-      `/start — Перезапустить бота и проверить статус\n` +
-      `/help — Показать это справочное меню\n\n` +
-      `*Доступные ИИ-модули:*\n` +
-      `🤖 *DeepSeek & ChatGPT* — для генерации аргументов торга\n` +
-      `🎨 *NanoBanana* — для визуализации графики/лотов\n\n` +
-      `💡 _Если бот ведет себя некорректно, отправьте /start для перезапуска сессии._`;
-
+    const helpMessage = `📖 *Справка по использованию бота*\n\nОтправьте боту ссылку на вещь или предложение. ИИ проанализирует её и выдаст скрипт переговоров.\n\n*Наша бизнес-модель:* Бот торгуется бесплатно, но берет комиссию 30% строго от сэкономленной для вас суммы!`;
     await limiter.schedule(() => ctx.replyWithMarkdown(helpMessage));
   } catch (error) {
-    console.error('Ошибка в команде /help:', error.message);
+    console.error('Ошибка в /help:', error.message);
   }
 });
 
-// АВТОМАТИЧЕСКИЙ СИМУЛЯТОР ТОРГА И РАСЧЕТА НАШЕЙ КОМИССИИ (30%)
+// РАБОТА С РЕАЛЬНЫМ ИИ DEEPSEEK
 bot.on('text', async (ctx) => {
   const userText = ctx.message.text;
   const chatId = ctx.chat.id;
 
   try {
     await limiter.schedule(async () => {
-      await ctx.reply(`🔍 Анализирую объект торга... Модули DeepSeek/ChatGPT составляют стратегию снижения цены.`);
-      await humanDelay(); 
+      // Сообщаем пользователю, что ИИ включился в работу
+      const statusMessage = await ctx.reply(`🧠 ИИ DeepSeek генерирует стратегию торга... Подождите несколько секунд.`);
 
-      const initialPrice = Math.floor(Math.random() * (50000 - 5000) + 5000); 
-      const discountPercent = Math.random() > 0.5 ? 12 : 8; 
-      const savedMoney = Math.round(initialPrice * (discountPercent / 100)); 
-      const targetPrice = initialPrice - savedMoney; 
-      const ourCommission = Math.round(savedMoney * 0.30); // Исправленная скобка! ✅
+      // Промпт-инструкция для ИИ
+      const systemInstruction = 
+        "Ты — профессиональный ИИ-переговорщик и жесткий закупщик. Твоя задача — проанализировать запрос пользователя (товар или ссылку) " +
+        "и составить психологически выверенный, аргументированный скрипт торга для снижения цены. " +
+        "Используй реальные живые зацепки: самовывоз, оплата наличными прямо сейчас, мелкие дефекты, рыночная переоцененность. " +
+        "Ответ выдай СТРОГО в формате JSON с полями:\n" +
+        "1. estimatedPrice (средняя цена товара числом, например 15000)\n" +
+        "2. targetPrice (целевая цена после торга числом, например 13000)\n" +
+        "3. argument (один мощный текст сообщения продавцу)";
 
-      const argumentsList = [
-        "• Готов забрать товар сегодня самовывозом в течение часа.",
-        "• На аналогичных площадках цена ниже, но готов купить у вас прямо сейчас.",
-        "• На фото заметны следы использования/мелкие царапины, прошу скидку.",
-        "• Оплата наличными или быстрым переводом без лишних вопросов."
-      ];
-      const selectedArgument = argumentsList[Math.floor(Math.random() * argumentsList.length)];
+      // Запрос к нейросети
+      const completion = await openai.chat.completions.create({
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: systemInstruction },
+          { role: 'user', content: userText }
+        ],
+        response_format: { type: 'json_object' } // Просим ИИ ответить строго в JSON
+      });
+
+      // Парсим ответ от ИИ
+      const aiData = JSON.parse(completion.choices[0].message.content);
+      
+      // Считаем экономику (30% нашей комиссии)
+      const savedMoney = aiData.estimatedPrice - aiData.targetPrice;
+      const ourCommission = Math.round(savedMoney * 0.30);
 
       const responseText = 
-        `🤖 *Результат разбора ИИ (DeepSeek/ChatGPT эмуляция):*\n\n` +
-        `📦 *Анализ лота:* Ссылка успешно распознана.\n` +
-        `💵 *Начальная цена:* ~${initialPrice} руб.\n` +
-        `🎯 *Целевая цена после торга:* ${targetPrice} руб.\n\n` +
-        `🔥 *Сэкономлено для вас:* ${savedMoney} руб. (Скидка ${discountPercent}%)\n` +
-        `💳 *Наша комиссия (30% по договору):* ${ourCommission} руб.\n\n` +
-        `💬 *Рекомендуемый скрипт для отправки продавцу:*\n` +
-        `_"Здравствуйте! Отличный товар. ${selectedArgument} Подскажите, уступите за ${targetPrice} руб.? Буду очень благодарен!"_\n\n` +
-        `💡 Чтобы подтвердить сделку и зафиксировать условия, отправьте скриншот согласия продавца.`;
+        `🤖 *Разбор от реального ИИ:* \n\n` +
+        `💵 *Ориентировочная цена:* ${aiData.estimatedPrice} руб.\n` +
+        `🎯 *Предлагаем продавцу:* ${aiData.targetPrice} руб.\n\n` +
+        `🔥 *Ваша выгода:* ${savedMoney} руб.\n` +
+        `💳 *Наша комиссия (30%):* ${ourCommission > 0 ? ourCommission : 0} руб.\n\n` +
+        `💬 *Скрипт для отправки продавцу (скопируйте и отправьте):*\n` +
+        `_"${aiData.argument}"_`;
 
+      // Удаляем сообщение со статусом загрузки и присылаем финальный ответ ИИ
+      try { await ctx.deleteMessage(statusMessage.message_id); } catch(e){}
       await ctx.replyWithMarkdown(responseText);
 
+      // Пишем транзакцию в Firestore
       await db.collection('bids_history').add({
         chatId: chatId,
         userQuery: userText,
-        initialPrice: initialPrice,
         savedMoney: savedMoney,
-        ourCommission: ourCommission,
+        commission: ourCommission,
         timestamp: admin.firestore.FieldValue.serverTimestamp()
       });
-      
-      console.log(`[Firestore] Записан расчет торга для чата ${chatId}. Комиссия: ${ourCommission}`);
     });
   } catch (error) {
-    console.error('Ошибка в симуляторе торга:', error.message);
+    console.error('Ошибка при запросе к DeepSeek:', error.message);
+    await ctx.reply('⚠️ Произошла заминка при связи с ИИ. Попробуйте отправить запрос еще раз.');
   }
 });
 
@@ -139,19 +126,18 @@ bot.on('text', async (ctx) => {
 app.use(bot.webhookCallback(TELEGRAM_WEBHOOK_PATH));
 
 app.get('/', (req, res) => {
-  res.send('Сервер торга MVP работает с защитой Rate Limiting!');
+  res.send('Сервер торга MVP работает с реальным ИИ DeepSeek!');
 });
 
-// ЗАПУСК СЕРВЕРА И УСТАНОВКА ВЕБХУКА НА ПОЛНЫЙ URL
+// Запуск сервера
 app.listen(PORT, async () => {
-  console.log(`Сервер запущен на порту ${PORT} с защитой Bottleneck`);
-  
+  console.log(`Сервер запущен на порту ${PORT} с ИИ-лимитером`);
   try {
-    const fullServerUrl = 'https://ai-haggle-mvp-service.onrender.com';
+    const fullServerUrl = 'https://onrender.com';
     const webhookUrl = `${fullServerUrl}/webhook/${MY_BOT_TOKEN}`;
     await bot.telegram.setWebhook(webhookUrl);
-    console.log(`[Telegram] Вебхук принудительно обновлен на полный URL: ${webhookUrl}`);
+    console.log(`[Telegram] Вебхук обновлен: ${webhookUrl}`);
   } catch (error) {
-    console.error('[Telegram] Ошибка авто-установки вебхука:', error.message);
+    console.error('[Telegram] Ошибка вебхука:', error.message);
   }
 });
