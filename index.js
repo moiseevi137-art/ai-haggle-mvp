@@ -47,18 +47,57 @@ return false;
 }
 }
 
+/** 
+
+* Главный партизанский модуль интеграции
+* Берет текст от DeepSeek и отправляет в чат площадки, полностью имитируя человека
+*/
+async function executeInvisibleHaggle(page, targetUrl, aiArgument) {
+try {
+console.log(📡 Переходим на страницу лота: ${targetUrl});
+await page.goto(targetUrl, { waitUntil: 'domcontentloaded' }); 
+
+console.log('👀 Имитируем чтение описания товара...');
+await humanScroll(page);
+await delay(Math.floor(Math.random() * 1500) + 1000); 
+
+const chatButtonSelector = 'button[data-marker="messenger-button/button"], button:has-text("Написать")'; 
+
+if (await page.$(chatButtonSelector)) {
+console.log('🖱️ Клик по кнопке открытия чата...');
+await page.click(chatButtonSelector);
+await delay(Math.floor(Math.random() * 2000) + 1500); 
+
+const inputSelector = 'textarea[placeholder*="Напишите"], data-marker="chat-input"'; 
+
+console.log('✍️ ИИ начинает скрытный ввод аргумента...');
+await humanType(page, inputSelector, aiArgument);
+await delay(Math.floor(Math.random() * 1000) + 500); 
+
+console.log('🚀 Сообщение подготовлено к отправке продавцу!');
+return { success: true, message: 'Аргумент успешно напечатан!' };
+} else {
+console.log('❌ Кнопка чата не найдена на странице.');
+return { success: false, error: 'Кнопка чата не найдена' };
+}
+} catch (error) {
+console.error('❌ Сбой партизанского модуля автоматизации:', error.message);
+return { success: false, error: error.message };
+}
+}
+
 // Инициализация базы данных Firestore
 const db = admin.firestore();
 // Инициализация ИИ DeepSeek (через OpenAI SDK)
 const openai = new OpenAI({
-  baseURL: 'https://deepseek.com', // Экономичный и мощный DeepSeek
-  apiKey: process.env.DEEPSEEK_API_KEY   // Берем ключ из настроек Render
-});
+baseURL: 'https://deepseek.com', // Экономичный и мощный DeepSeek
+apiKey: process.env.DEEPSEEK_API_KEY   // Берем ключ из настроек Render
+}); 
 
 // Инициализация бота
-const MY_BOT_TOKEN = '8982856560:AAEbZKCsfF4co_Fyy3IdTlG6-USxzVnTVmc'; 
+const MY_BOT_TOKEN = '8982856560:AAEbZKCsfF4co_Fyy3IdTlG6-USxzVnTVmc';
 const bot = new Telegraf(MY_BOT_TOKEN);
-const TELEGRAM_WEBHOOK_PATH = `/webhook/${MY_BOT_TOKEN}`;
+const TELEGRAM_WEBHOOK_PATH = /webhook/${MY_BOT_TOKEN};
 
 // Настройка очередей (Rate Limiting)
 const limiter = new Bottleneck({
