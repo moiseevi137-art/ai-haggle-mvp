@@ -3,6 +3,7 @@ const express = require('express');
 const admin = require('firebase-admin');
 const Bottleneck = require('bottleneck');
 const OpenAI = require('openai'); // Подключаем ИИ
+const { humanType, humanScroll, delay } = require('./humanEmulation');
 
 // Инициализация Express
 const app = express();
