@@ -3,20 +3,52 @@ const express = require('express');
 const admin = require('firebase-admin');
 const Bottleneck = require('bottleneck');
 const OpenAI = require('openai'); // Подключаем ИИ
-const { humanType, humanScroll, delay } = require('./humanEmulation');
+const { humanType, humanScroll, delay } = require('./humanEmulation'); 
 
 // Инициализация Express
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000; 
 
 // Инициализация Firebase Admin SDK
 if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.applicationDefault()
-  });
-}
-const db = admin.firestore();
+admin.initializeApp({
+credential: admin.credential.applicationDefault()
+});
+} 
 
+//==========================================
+// ВСПОМОГАТЕЛЬНЫЕ СИСТЕМНЫЕ ФУНКЦИИ ИИ И БРАУЗЕРА
+//==========================================
+const fs = require('fs');
+const path = require('path'); 
+
+/** 
+
+* Вспомогательная функция для загрузки сессии Авито/Юлы
+* Используется, чтобы бесплатно обходить капчу и авторизацию
+*/
+async function loadBrowserSession(page) {
+const cookiesPath = path.join(__dirname, 'cookies.json');
+try {
+if (fs.existsSync(cookiesPath)) {
+const cookiesData = fs.readFileSync(cookiesPath, 'utf8');
+const cookies = JSON.parse(cookiesData);
+if (cookies && cookies.length > 0) {
+console.log('🥷 Обнаружены сохраненные куки. Загружаем сессию...');
+await page.setCookie(...cookies);
+return true;
+}
+}
+console.log('⚠️ Файл cookies.json пуст или отсутствует. Бот откроет чистую страницу.');
+return false;
+} catch (error) {
+console.error('❌ Ошибка при загрузке cookies.json:', error.message);
+return false;
+}
+}
+
+// Инициализация базы данных Firestore
+const db = admin.firestore();
 // Инициализация ИИ DeepSeek (через OpenAI SDK)
 const openai = new OpenAI({
   baseURL: 'https://deepseek.com', // Экономичный и мощный DeepSeek
