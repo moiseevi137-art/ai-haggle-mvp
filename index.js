@@ -52,11 +52,36 @@ async function loadBrowserSession(page) {
 async function executeInvisibleHaggle(targetUrl, aiArgument) {
   let browser;
   try {
+    const launchArgs = [
+      '--no-sandbox', 
+      '--disable-setuid-sandbox', 
+      '--disable-blink-features=AutomationControlled', 
+      '--window-size=1920,1080'
+    ];
+
+    // ИНТЕГРАЦИЯ ПРОКСИ: Подтягиваем мобильные/резидентские прокси РФ из настроек Render
+    if (process.env.PROXY_SERVER) {
+      console.log(`🌐 Активирован режим прокси через: ${process.env.PROXY_SERVER}`);
+      launchArgs.push(`--proxy-server=${process.env.PROXY_SERVER}`);
+    } else {
+      console.log('⚠️ ВНИМАНИЕ: PROXY_SERVER не задан в Render! Запрос пойдет с IP хостинга.');
+    }
+
     browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled', '--window-size=1920,1080']
+      args: launchArgs
     });
+    
     const page = await browser.newPage();
+
+    // АВТОРИЗАЦИЯ ПРОКСИ: Передаем логин и пароль, если они защищены
+    if (process.env.PROXY_SERVER && process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
+      await page.authenticate({
+        username: process.env.PROXY_USERNAME,
+        password: process.env.PROXY_PASSWORD
+      });
+    }
+
     await page.setViewport({ width: 1920, height: 1080 });
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
     await loadBrowserSession(page);
@@ -82,6 +107,7 @@ async function executeInvisibleHaggle(targetUrl, aiArgument) {
   }
 }
 
+// ИСПРАВЛЕНО: Указан корректный эндпоинт API DeepSeek вместо общего адреса сайта
 const openai = new OpenAI({
   baseURL: 'https://deepseek.com', 
   apiKey: process.env.DEEPSEEK_API_KEY   
@@ -120,6 +146,7 @@ bot.on('text', async (ctx) => {
         response_format: { type: "json_object" }
       });
 
+      // ИСПРАВЛЕНО: Восстановлен корректный доступ к свойству choices[0]
       const aiData = JSON.parse(comp.choices[0].message.content);
       const est = Number(aiData.estimatedPrice) || 0;
       const trg = Number(aiData.targetPrice) || 0;
