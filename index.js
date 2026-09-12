@@ -134,7 +134,7 @@ async function executeInvisibleHaggle(targetUrl, aiArgument) {
     return { success: false, error: error.message };
   } finally {
     if (browser) {
-      console.log('关闭 Закрываем сессию защищенного браузера...');
+      console.log('🤖 Закрываем сессию защищенного браузера...');
       await browser.close();
     }
   }
@@ -208,14 +208,14 @@ bot.on('text', async (ctx) => {
             content: `Ты — жесткий, но вежливый переговорщик и закупщик. Твоя цель — снизить цену на лот на 10-15%. 
             Ты должен проанализировать запрос и вернуть ответ СТРОГО в формате JSON со следующими полями:
             {
-              "estimatedPrice": число (ориентировочная текущая цена товара в рублях, если цена неизвестна — извлеки или предположи на основе контекста),
+              "estimatedPrice": число (ориентировочная текущая цена товара в рублей, если цена неизвестна — извлеки или предположи на основе контекста),
               "targetPrice": число (целевая сниженная цена после торга в рублях),
               "argument": "короткий, хитрый, живой и вежливый человеческий текст сообщения продавцу с аргументами вроде самовывоза, дефектов или оплаты наличными. Без роботских шаблонов"
             }` 
           },
           { role: "user", content: `Проанализируй этот лот и сформируй стратегию торга: ${text}` }
         ],
-        response_format: { type: "json_object" } // Принудительный JSON режим
+        response_format: { type: "json_object" }
       });
 
       // Парсим структурированный JSON-ответ от ИИ
@@ -239,7 +239,7 @@ bot.on('text', async (ctx) => {
 
       await ctx.reply(financialReport, { parse_mode: 'Markdown' });
 
-      // СОХРАНЕНИЕ ТРАНЗАКЦИИ В FIRESTORE (Коллекция bids_history)
+      // СОХРАНЕНИЕ ТРАНЗАКЦИИ В FIRESTORE
       await limiter.schedule(async () => {
         await db.collection('bids_history').add({
           userId: userId,
@@ -264,3 +264,4 @@ bot.on('text', async (ctx) => {
         await ctx.reply(`❌ Робот не смог напечатать сообщение: ${result.error}`);
       }
 
+    } catch (error) {
