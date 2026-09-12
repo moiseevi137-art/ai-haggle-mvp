@@ -3,9 +3,16 @@ const express = require('express');
 const admin = require('firebase-admin');
 const Bottleneck = require('bottleneck');
 const OpenAI = require('openai'); 
-const { humanType, humanScroll, delay } = require('./humanEmulation'); 
 const fs = require('fs');
 const path = require('path'); 
+
+// ИМПОРТ ЗАЩИЩЕННОГО БРАУЗЕРА И ПЛАГИНОВ СКРЫТНОСТИ
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+// Активируем невидимый режим для обхода анти-фрод систем площадок
+puppeteer.use(StealthPlugin());
+
+const { humanType, humanScroll, delay } = require('./humanEmulation'); 
 
 // Инициализация Express
 const app = express();
@@ -29,16 +36,13 @@ if (!admin.apps.length) {
  */
 async function loadBrowserSession(page) {
   try {
-    // 1. Проверяем наличие кук в переменных окружения Render
     if (process.env.AVITO_COOKIE) {
       console.log('🥷 Обнаружены куки в AVITO_COOKIE (Render). Загружаем сессию...');
       
       let cookies;
       try {
-        // Если куки сохранены как JSON-массив
         cookies = JSON.parse(process.env.AVITO_COOKIE);
       } catch (jsonError) {
-        // Если куки сохранены как стандартная строка заголовка "name=value; name2=value2"
         console.log('⚠️ AVITO_COOKIE не в JSON формате. Парсим как строку заголовка...');
         cookies = process.env.AVITO_COOKIE.split(';').map(pair => {
           const [name, ...valueParts] = pair.trim().split('=');
@@ -58,7 +62,6 @@ async function loadBrowserSession(page) {
       }
     }
 
-    // 2. Фалбек на локальный cookies.json, если в переменных окружения пусто
     const cookiesPath = path.join(__dirname, 'cookies.json');
     if (fs.existsSync(cookiesPath)) {
       const cookiesData = fs.readFileSync(cookiesPath, 'utf8');
@@ -82,51 +85,80 @@ async function loadBrowserSession(page) {
  * Главный партизанский модуль интеграции
  * Берет текст от DeepSeek и отправляет в чат площадки, полностью имитируя человека
  */
-async function executeInvisibleHaggle(page, targetUrl, aiArgument) {
+async function executeInvisibleHaggle(targetUrl, aiArgument) {
+  let browser;
   try {
+    console.log('🛡️ Запуск защищенного инстанса Chrome...');
+    browser = await puppeteer.launch({
+      headless: true, // Запуск на сервере в фоне
+      args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox',
+        '--disable-blink-features=AutomationControlled', // Скрывает флаг автоматизации
+        '--window-size=1920,1080'
+      ]
+    });
+
+    const page = await browser.newPage();
+    
+    // Эмуляция реального FullHD экрана обычного человека
+    await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
+    
+    // Подмена User-Agent на актуальный Windows-браузер, убираем упоминания HeadlessChrome
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
+
+    // Подгружаем куки для авторизации без капчи
+    await loadBrowserSession(page);
+
     console.log(`📡 Переходим на страницу лота: ${targetUrl}`);
-    await page.goto(targetUrl, { waitUntil: 'domcontentloaded' }); 
+    // Имитируем реальное поведение: плавный заход на сайт
+    await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 45000 }); 
 
     console.log('👀 Имитируем чтение описания товара...');
     await humanScroll(page);
-    await delay(Math.floor(Math.random() * 1500) + 1000); 
+    await delay(Math.floor(Math.random() * 2000) + 1500); 
 
-    // ИСПРАВЛЕНО: Безопасный селектор без псевдоклассов вроде :has-text для нативной поддержки Puppeteer
     const chatButtonSelector = 'button[data-marker="messenger-button/button"]'; 
 
     if (await page.$(chatButtonSelector)) {
-      console.log('🖱️ Клик по кнопке открытия чата...');
+      console.log('鼠标 Клик по кнопке открытия чата...');
       await page.click(chatButtonSelector);
-      await delay(Math.floor(Math.random() * 2000) + 1500); 
+      // Задержка на рендеринг окна чата
+      await delay(Math.floor(Math.random() * 2500) + 2000); 
 
       const inputSelector = 'textarea[placeholder*="Напишите"], [data-marker="chat-input"]'; 
 
       console.log('✍️ ИИ начинает скрытный ввод аргумента...');
       await humanType(page, inputSelector, aiArgument);
-      await delay(Math.floor(Math.random() * 1000) + 500); 
+      await delay(Math.floor(Math.random() * 1500) + 1000); 
 
       console.log('🚀 Сообщение подготовлено к отправке продавцу!');
       return { success: true, message: 'Аргумент успешно напечатан!' };
     } else {
-      console.log('❌ Кнопка чата не найдена на странице.');
+      console.log('❌ Кнопка чата не найдена на странице. Возможно, куки устарели или лот заблокирован.');
       return { success: false, error: 'Кнопка чата не найдена' };
     }
   } catch (error) {
     console.error('❌ Сбой партизанского модуля автоматизации:', error.message);
     return { success: false, error: error.message };
+  } finally {
+    if (browser) {
+      console.log('关闭 Закрываем сессию защищенного браузера...');
+      await browser.close();
+    }
   }
 }
 
 // Инициализация базы данных Firestore
 const db = admin.firestore();
 
-// ИСПРАВЛЕНО: Указан корректный рабочий API-эндпоинт DeepSeek v1
+// Указан корректный рабочий API-эндпоинт DeepSeek v1
 const openai = new OpenAI({
   baseURL: 'https://deepseek.com', 
   apiKey: process.env.DEEPSEEK_API_KEY   
 }); 
 
-// БЕЗОПАСНОСТЬ: Токен вынесен в переменные окружения Render
+// Токен вынесен в переменные окружения Render
 const MY_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!MY_BOT_TOKEN) {
   console.error('❌ КРИТИЧЕСКАЯ ОШИБКА: Переменная TELEGRAM_BOT_TOKEN не задана в настройках Render!');
@@ -151,7 +183,6 @@ bot.start(async (ctx) => {
     const chatId = ctx.chat.id;
     const userId = ctx.from.id.toString();
 
-    // Логируем пользователя в Firebase Firestore через limiter
     await limiter.schedule(async () => {
       await db.collection('user_logs').doc(userId).set({
         chatId: chatId,
@@ -161,21 +192,20 @@ bot.start(async (ctx) => {
       }, { merge: true });
     });
 
-    await ctx.reply('🤖 Привет! Я партизанский ИИ-модуль «AI-Haggle-MVP».\n\nОтправь мне ссылку на объявление Авито, я проанализирую его с помощью ИИ DeepSeek и подготовлю почву для аргументированного торга.');
+    await ctx.reply('🤖 Привет! Я защищенный ИИ-модуль «AI-Haggle-MVP».\n\nОтправь мне ссылку на объявление Авито, я проанализирую его с помощью ИИ DeepSeek и автоматически предложу торг в чате.');
   } catch (error) {
     console.error('Ошибка в команде /start:', error.message);
   }
 });
 
 bot.help(async (ctx) => {
-  await ctx.reply('📖 Как это работает:\n1. Отправляешь ссылку на товар.\n2. DeepSeek изучает слабые места лота.\n3. Скрипт заходит на страницу под куки из cookies.json, открывает чат и печатает текст с человеческими таймингами.');
+  await ctx.reply('📖 Как это работает:\n1. Отправляешь ссылку на товар.\n2. DeepSeek изучает слабые места лота.\n3. Скрипт заходит под маскировкой Stealth-плагинов, подгружает AVITO_COOKIE, открывает чат и печатает текст с человеческой задержкой.');
 });
 
 // Обработка входящих ссылок
 bot.on('text', async (ctx) => {
   const text = ctx.message.text;
 
-  // Проверяем, прислал ли пользователь ссылку
   if (text.includes('http://') || text.includes('https://')) {
     await ctx.reply('⏳ Запускаю DeepSeek ИИ для анализа лота и формирования стратегии торга...');
 
@@ -190,17 +220,22 @@ bot.on('text', async (ctx) => {
         max_tokens: 150
       });
 
-      // ИСПРАВЛЕНО: Корректный доступ к результату ответа через массив choices[0]
       const aiArgument = completion.choices[0].message.content;
       await ctx.reply(`🤖 **Сгенерированный аргумент торга:**\n\n"${aiArgument}"`);
-      await ctx.reply(`⚙️ Ожидаю развертывания Puppeteer на сервере для отправки этого аргумента в чат лота...`);
+      await ctx.reply(`🛡️ Запускаю маскированный модуль автоматизации на сервере для печати сообщения...`);
 
-      // Здесь в будущем будет инициализироваться страница Puppeteer 'page' и вызываться:
-      // await executeInvisibleHaggle(page, text, aiArgument);
+      // ЗАПУСК ЗАЩИЩЕННОГО БРАУЗЕРА
+      const result = await executeInvisibleHaggle(text, aiArgument);
+      
+      if (result.success) {
+        await ctx.reply(`✅ Действие успешно выполнено: ${result.message}`);
+      } else {
+        await ctx.reply(`❌ Робот не смог завершить процесс: ${result.error}`);
+      }
 
     } catch (aiError) {
       console.error('Ошибка API DeepSeek:', aiError.message);
-      await ctx.reply('⚠️ Не удалось сгенерировать аргумент через DeepSeek. Проверьте валидность API-ключа в настройках Render.');
+      await ctx.reply('⚠️ Не удалось выполнить цепочку. Проверьте валидность API-ключей в настройках Render.');
     }
   } else {
     await ctx.reply('Используйте меню или отправьте прямую ссылку на товар.');
@@ -211,21 +246,18 @@ bot.on('text', async (ctx) => {
 // ИНТЕГРАЦИЯ EXPRESS И TELEGRAM WEBHOOK
 // ==========================================
 
-// Настраиваем вебхук Telegram внутри Express-сервера
 app.post(TELEGRAM_WEBHOOK_PATH, (req, res) => {
   bot.handleUpdate(req.body, res);
 });
 
-// Хелсчек-эндпоинт для Render (чтобы предотвратить падение сервера)
 app.get('/', (req, res) => {
-  res.send('🚀 AI-Haggle-MVP работает в штатном режиме!');
+  res.send('🚀 AI-Haggle-MVP работает в защищенном режиме!');
 });
 
 // Запуск сервера Express
 app.listen(PORT, async () => {
   console.log(`📡 Express-сервер успешно запущен на порту ${PORT}`);
   try {
-    // Регистрируем вебхук в Telegram API
     const webhookUrl = `${process.env.RENDER_EXTERNAL_URL || 'https://onrender.com'}${TELEGRAM_WEBHOOK_PATH}`;
     await bot.telegram.setWebhook(webhookUrl);
     console.log(`[Telegram] Вебхук успешно зарегистрирован по адресу: ${webhookUrl}`);
@@ -234,6 +266,5 @@ app.listen(PORT, async () => {
   }
 });
 
-// Корректное завершение работы
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
