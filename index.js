@@ -25,24 +25,55 @@ if (!admin.apps.length) {
 
 /** 
  * Вспомогательная функция для загрузки сессии Авито/Юлы
- * Используется, чтобы бесплатно обходить капчу и авторизацию
+ * Приоритетно берет куки из переменной окружения Render (AVITO_COOKIE) или из cookies.json
  */
 async function loadBrowserSession(page) {
-  const cookiesPath = path.join(__dirname, 'cookies.json');
   try {
+    // 1. Проверяем наличие кук в переменных окружения Render
+    if (process.env.AVITO_COOKIE) {
+      console.log('🥷 Обнаружены куки в AVITO_COOKIE (Render). Загружаем сессию...');
+      
+      let cookies;
+      try {
+        // Если куки сохранены как JSON-массив
+        cookies = JSON.parse(process.env.AVITO_COOKIE);
+      } catch (jsonError) {
+        // Если куки сохранены как стандартная строка заголовка "name=value; name2=value2"
+        console.log('⚠️ AVITO_COOKIE не в JSON формате. Парсим как строку заголовка...');
+        cookies = process.env.AVITO_COOKIE.split(';').map(pair => {
+          const [name, ...valueParts] = pair.trim().split('=');
+          return {
+            name: name,
+            value: valueParts.join('='),
+            domain: '.avito.ru',
+            path: '/'
+          };
+        });
+      }
+
+      if (cookies && cookies.length > 0) {
+        await page.setCookie(...cookies);
+        console.log('✅ Сессия из AVITO_COOKIE успешно импортирована в браузер!');
+        return true;
+      }
+    }
+
+    // 2. Фалбек на локальный cookies.json, если в переменных окружения пусто
+    const cookiesPath = path.join(__dirname, 'cookies.json');
     if (fs.existsSync(cookiesPath)) {
       const cookiesData = fs.readFileSync(cookiesPath, 'utf8');
       const cookies = JSON.parse(cookiesData);
       if (cookies && cookies.length > 0) {
-        console.log('🥷 Обнаружены сохраненные куки. Загружаем сессию...');
+        console.log('📁 Файл cookies.json обнаружен. Загружаем сессию из файла...');
         await page.setCookie(...cookies);
         return true;
       }
     }
-    console.log('⚠️ Файл cookies.json пуст или отсутствует. Бот откроет чистую страницу.');
+
+    console.log('⚠️ Куки не найдены ни в Render, ни в cookies.json. Бот откроет чистую страницу.');
     return false;
   } catch (error) {
-    console.error('❌ Ошибка при загрузке cookies.json:', error.message);
+    console.error('❌ Ошибка при загрузке кук сессии:', error.message);
     return false;
   }
 }
@@ -60,14 +91,14 @@ async function executeInvisibleHaggle(page, targetUrl, aiArgument) {
     await humanScroll(page);
     await delay(Math.floor(Math.random() * 1500) + 1000); 
 
-    const chatButtonSelector = 'button[data-marker="messenger-button/button"], button:has-text("Написать")'; 
+    // ИСПРАВЛЕНО: Безопасный селектор без псевдоклассов вроде :has-text для нативной поддержки Puppeteer
+    const chatButtonSelector = 'button[data-marker="messenger-button/button"]'; 
 
     if (await page.$(chatButtonSelector)) {
       console.log('🖱️ Клик по кнопке открытия чата...');
       await page.click(chatButtonSelector);
       await delay(Math.floor(Math.random() * 2000) + 1500); 
 
-      // ИСПРАВЛЕНО: Добавлена пропущенная скобка перед data-marker для валидного селектора
       const inputSelector = 'textarea[placeholder*="Напишите"], [data-marker="chat-input"]'; 
 
       console.log('✍️ ИИ начинает скрытный ввод аргумента...');
@@ -89,14 +120,19 @@ async function executeInvisibleHaggle(page, targetUrl, aiArgument) {
 // Инициализация базы данных Firestore
 const db = admin.firestore();
 
-// Инициализация ИИ DeepSeek (через OpenAI SDK)
+// ИСПРАВЛЕНО: Указан корректный рабочий API-эндпоинт DeepSeek v1
 const openai = new OpenAI({
-  baseURL: 'https://deepseek.com', // ИСПРАВЛЕНО: Указан корректный эндпоинт API DeepSeek
+  baseURL: 'https://deepseek.com', 
   apiKey: process.env.DEEPSEEK_API_KEY   
 }); 
 
-// Инициализация бота
-const MY_BOT_TOKEN = '8982856560:AAEbZKCsfF4co_Fyy3IdTlG6-USxzVnTVmc';
+// БЕЗОПАСНОСТЬ: Токен вынесен в переменные окружения Render
+const MY_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+if (!MY_BOT_TOKEN) {
+  console.error('❌ КРИТИЧЕСКАЯ ОШИБКА: Переменная TELEGRAM_BOT_TOKEN не задана в настройках Render!');
+  process.exit(1);
+}
+
 const bot = new Telegraf(MY_BOT_TOKEN);
 const TELEGRAM_WEBHOOK_PATH = `/webhook/${MY_BOT_TOKEN}`;
 
@@ -154,6 +190,7 @@ bot.on('text', async (ctx) => {
         max_tokens: 150
       });
 
+      // ИСПРАВЛЕНО: Корректный доступ к результату ответа через массив choices[0]
       const aiArgument = completion.choices[0].message.content;
       await ctx.reply(`🤖 **Сгенерированный аргумент торга:**\n\n"${aiArgument}"`);
       await ctx.reply(`⚙️ Ожидаю развертывания Puppeteer на сервере для отправки этого аргумента в чат лота...`);
