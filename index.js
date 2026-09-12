@@ -9,7 +9,6 @@ const path = require('path');
 // ИМПОРТ ЗАЩИЩЕННОГО БРАУЗЕРА И ПЛАГИНОВ СКРЫТНОСТИ
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-// Активируем невидимый режим для обхода анти-фрод систем площадок
 puppeteer.use(StealthPlugin());
 
 const { humanType, humanScroll, delay } = require('./humanEmulation'); 
@@ -26,19 +25,19 @@ if (!admin.apps.length) {
   });
 } 
 
+const db = admin.firestore();
+
 //==========================================
 // ВСПОМОГАТЕЛЬНЫЕ СИСТЕМНЫЕ ФУНКЦИИ ИИ И БРАУЗЕРА
 //==========================================
 
 /** 
  * Вспомогательная функция для загрузки сессии Авито/Юлы
- * Приоритетно берет куки из переменной окружения Render (AVITO_COOKIE) или из cookies.json
  */
 async function loadBrowserSession(page) {
   try {
     if (process.env.AVITO_COOKIE) {
       console.log('🥷 Обнаружены куки в AVITO_COOKIE (Render). Загружаем сессию...');
-      
       let cookies;
       try {
         cookies = JSON.parse(process.env.AVITO_COOKIE);
@@ -83,35 +82,28 @@ async function loadBrowserSession(page) {
 
 /** 
  * Главный партизанский модуль интеграции
- * Берет текст от DeepSeek и отправляет в чат площадки, полностью имитируя человека
  */
 async function executeInvisibleHaggle(targetUrl, aiArgument) {
   let browser;
   try {
     console.log('🛡️ Запуск защищенного инстанса Chrome...');
     browser = await puppeteer.launch({
-      headless: true, // Запуск на сервере в фоне
+      headless: true,
       args: [
         '--no-sandbox', 
         '--disable-setuid-sandbox',
-        '--disable-blink-features=AutomationControlled', // Скрывает флаг автоматизации
+        '--disable-blink-features=AutomationControlled',
         '--window-size=1920,1080'
       ]
     });
 
     const page = await browser.newPage();
-    
-    // Эмуляция реального FullHD экрана обычного человека
     await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
-    
-    // Подмена User-Agent на актуальный Windows-браузер, убираем упоминания HeadlessChrome
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
 
-    // Подгружаем куки для авторизации без капчи
     await loadBrowserSession(page);
 
     console.log(`📡 Переходим на страницу лота: ${targetUrl}`);
-    // Имитируем реальное поведение: плавный заход на сайт
     await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 45000 }); 
 
     console.log('👀 Имитируем чтение описания товара...');
@@ -121,9 +113,8 @@ async function executeInvisibleHaggle(targetUrl, aiArgument) {
     const chatButtonSelector = 'button[data-marker="messenger-button/button"]'; 
 
     if (await page.$(chatButtonSelector)) {
-      console.log('鼠标 Клик по кнопке открытия чата...');
+      console.log('🖱️ Клик по кнопке открытия чата...');
       await page.click(chatButtonSelector);
-      // Задержка на рендеринг окна чата
       await delay(Math.floor(Math.random() * 2500) + 2000); 
 
       const inputSelector = 'textarea[placeholder*="Напишите"], [data-marker="chat-input"]'; 
@@ -135,7 +126,7 @@ async function executeInvisibleHaggle(targetUrl, aiArgument) {
       console.log('🚀 Сообщение подготовлено к отправке продавцу!');
       return { success: true, message: 'Аргумент успешно напечатан!' };
     } else {
-      console.log('❌ Кнопка чата не найдена на странице. Возможно, куки устарели или лот заблокирован.');
+      console.log('❌ Кнопка чата не найдена на странице.');
       return { success: false, error: 'Кнопка чата не найдена' };
     }
   } catch (error) {
@@ -149,19 +140,16 @@ async function executeInvisibleHaggle(targetUrl, aiArgument) {
   }
 }
 
-// Инициализация базы данных Firestore
-const db = admin.firestore();
-
-// Указан корректный рабочий API-эндпоинт DeepSeek v1
+// Инициализация ИИ DeepSeek v1
 const openai = new OpenAI({
   baseURL: 'https://deepseek.com', 
   apiKey: process.env.DEEPSEEK_API_KEY   
 }); 
 
-// Токен вынесен в переменные окружения Render
+// Токен бота из переменных окружения Render
 const MY_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!MY_BOT_TOKEN) {
-  console.error('❌ КРИТИЧЕСКАЯ ОШИБКА: Переменная TELEGRAM_BOT_TOKEN не задана в настройках Render!');
+  console.error('❌ КРИТИЧЕСКАЯ ОШИБКА: Переменная TELEGRAM_BOT_TOKEN не задана!');
   process.exit(1);
 }
 
@@ -199,72 +187,80 @@ bot.start(async (ctx) => {
 });
 
 bot.help(async (ctx) => {
-  await ctx.reply('📖 Как это работает:\n1. Отправляешь ссылку на товар.\n2. DeepSeek изучает слабые места лота.\n3. Скрипт заходит под маскировкой Stealth-плагинов, подгружает AVITO_COOKIE, открывает чат и печатает текст с человеческой задержкой.');
+  await ctx.reply('📖 Как это работает:\n1. Отправляешь ссылку на товар.\n2. DeepSeek изучает слабые места лота.\n3. Скрипт заходит под маскировкой Stealth-плагинов, открывает чат и печатает текст с человеческой задержкой.');
 });
 
 // Обработка входящих ссылок
 bot.on('text', async (ctx) => {
   const text = ctx.message.text;
+  const userId = ctx.from.id.toString();
 
   if (text.includes('http://') || text.includes('https://')) {
-    await ctx.reply('⏳ Запускаю DeepSeek ИИ для анализа лота и формирования стратегии торга...');
+    await ctx.reply('⏳ Запускаю DeepSeek ИИ для структурного анализа лота и формирования выгоды...');
 
     try {
-      // Запрос к DeepSeek ИИ для генерации аргумента торга
+      // МОДЕРНИЗАЦИЯ: Запрос к DeepSeek ИИ в строгом формате JSON
       const completion = await openai.chat.completions.create({
         model: "deepseek-chat",
         messages: [
-          { role: "system", content: "Ты — профессиональный закупщик и мастер вежливого торга. Твоя цель — написать короткое, убедительное и вежливое сообщение продавцу на Авито, чтобы снизить цену на 10-15%. Используй живой человеческий язык, не используй шаблонные фразы роботов." },
-          { role: "user", content: `Сгенерируй сообщение для торга по этой ссылке: ${text}` }
+          { 
+            role: "system", 
+            content: `Ты — жесткий, но вежливый переговорщик и закупщик. Твоя цель — снизить цену на лот на 10-15%. 
+            Ты должен проанализировать запрос и вернуть ответ СТРОГО в формате JSON со следующими полями:
+            {
+              "estimatedPrice": число (ориентировочная текущая цена товара в рублях, если цена неизвестна — извлеки или предположи на основе контекста),
+              "targetPrice": число (целевая сниженная цена после торга в рублях),
+              "argument": "короткий, хитрый, живой и вежливый человеческий текст сообщения продавцу с аргументами вроде самовывоза, дефектов или оплаты наличными. Без роботских шаблонов"
+            }` 
+          },
+          { role: "user", content: `Проанализируй этот лот и сформируй стратегию торга: ${text}` }
         ],
-        max_tokens: 150
+        response_format: { type: "json_object" } // Принудительный JSON режим
       });
 
-      const aiArgument = completion.choices[0].message.content;
-      await ctx.reply(`🤖 **Сгенерированный аргумент торга:**\n\n"${aiArgument}"`);
-      await ctx.reply(`🛡️ Запускаю маскированный модуль автоматизации на сервере для печати сообщения...`);
+      // Парсим структурированный JSON-ответ от ИИ
+      const aiData = JSON.parse(completion.choices[0].message.content);
+      
+      const estimated = Number(aiData.estimatedPrice) || 0;
+      const target = Number(aiData.targetPrice) || 0;
+      const argumentText = aiData.argument;
 
-      // ЗАПУСК ЗАЩИЩЕННОГО БРАУЗЕРА
-      const result = await executeInvisibleHaggle(text, aiArgument);
+      // Вычисляем чистую выгоду пользователя и 30% комиссии сервиса
+      const userProfit = estimated > target ? (estimated - target) : 0;
+      const serviceCommission = Math.round(userProfit * 0.30);
+
+      // Отправляем финансовый отчет пользователю в чат
+      let financialReport = `📊 **ИИ-АНАЛИЗ СДЕЛКИ:**\n\n`;
+      financialReport += `💵 Ориентировочная цена: \`${estimated} руб.\`\n`;
+      financialReport += `🎯 Целевая цена после торга: \`${target} руб.\`\n`;
+      financialReport += `📈 Ваша чистая выгода: \`${userProfit} руб.\`\n`;
+      financialReport += `💰 Наша комиссия сервиса (30%): \`${serviceCommission} руб.\`\n\n`;
+      financialReport += `📝 **Текст сообщения продавцу:**\n_"${argumentText}"_`;
+
+      await ctx.reply(financialReport, { parse_mode: 'Markdown' });
+
+      // СОХРАНЕНИЕ ТРАНЗАКЦИИ В FIRESTORE (Коллекция bids_history)
+      await limiter.schedule(async () => {
+        await db.collection('bids_history').add({
+          userId: userId,
+          username: ctx.from.username || '🔑 Аноним',
+          targetUrl: text,
+          estimatedPrice: estimated,
+          targetPrice: target,
+          calculatedProfit: userProfit,
+          commissionAmount: serviceCommission,
+          timestamp: admin.firestore.FieldValue.serverTimestamp()
+        });
+      });
+
+      await ctx.reply(`🛡️ Автоматизация запущена! Перехожу по ссылке лота для ввода сообщения...`);
+
+      // Запуск невидимого браузера
+      const result = await executeInvisibleHaggle(text, argumentText);
       
       if (result.success) {
-        await ctx.reply(`✅ Действие успешно выполнено: ${result.message}`);
+        await ctx.reply(`✅ Сообщение с торгом успешно напечатано в чате продавца!`);
       } else {
-        await ctx.reply(`❌ Робот не смог завершить процесс: ${result.error}`);
+        await ctx.reply(`❌ Робот не смог напечатать сообщение: ${result.error}`);
       }
 
-    } catch (aiError) {
-      console.error('Ошибка API DeepSeek:', aiError.message);
-      await ctx.reply('⚠️ Не удалось выполнить цепочку. Проверьте валидность API-ключей в настройках Render.');
-    }
-  } else {
-    await ctx.reply('Используйте меню или отправьте прямую ссылку на товар.');
-  }
-});
-
-// ==========================================
-// ИНТЕГРАЦИЯ EXPRESS И TELEGRAM WEBHOOK
-// ==========================================
-
-app.post(TELEGRAM_WEBHOOK_PATH, (req, res) => {
-  bot.handleUpdate(req.body, res);
-});
-
-app.get('/', (req, res) => {
-  res.send('🚀 AI-Haggle-MVP работает в защищенном режиме!');
-});
-
-// Запуск сервера Express
-app.listen(PORT, async () => {
-  console.log(`📡 Express-сервер успешно запущен на порту ${PORT}`);
-  try {
-    const webhookUrl = `${process.env.RENDER_EXTERNAL_URL || 'https://onrender.com'}${TELEGRAM_WEBHOOK_PATH}`;
-    await bot.telegram.setWebhook(webhookUrl);
-    console.log(`[Telegram] Вебхук успешно зарегистрирован по адресу: ${webhookUrl}`);
-  } catch (error) {
-    console.error('❌ Ошибка регистрации вебхука в Telegram:', error.message);
-  }
-});
-
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
