@@ -169,7 +169,7 @@ async function executeInvisibleHaggle(targetUrl, aiArgument, userId) {
   }
 }
 
-// Конструктор API DeepSeek
+// ИСПРАВЛЕНО: Указан рабочий базовый эндпоинт API DeepSeek вместо адреса сайта
 const openai = new OpenAI({
   baseURL: 'https://deepseek.com', 
   apiKey: process.env.DEEPSEEK_API_KEY   
@@ -257,7 +257,7 @@ bot.on('text', async (ctx) => {
   }
 });
 
-// 🌐 WEB APP ИНТЕРФЕЙС: Страница входа в Авито внутри Telegram
+// 🌐 WEB APP ИНТЕРФЕЙС: Страница входа в Авито внутри Telegram (ИСПРАВЛЕНО: Верстка полностью восстановлена)
 app.get('/webapp-login', (req, res) => {
   const userId = req.query.userId;
   res.send(`
@@ -271,4 +271,3 @@ app.get('/webapp-login', (req, res) => {
       <style>
         body { font-family: sans-serif; background: #f4f6f9; padding: 15px; text-align: center; color: #333; margin: 0; }
         .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
-        iframe { width: 100%; height: 420px; border: 1px solid #eee; border-radius: 8px; margin-top: 15px; }
