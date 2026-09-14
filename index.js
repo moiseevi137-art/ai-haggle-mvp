@@ -158,7 +158,7 @@ async function executeHaggle(url, arg, uid) {
   finally { if (browser) await browser.close(); }
 }
 
-const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: process.env.DEEPSEEK_API_KEY }); 
+const openai = new OpenAI({ baseURL: 'https://deepseek.com', apiKey: process.env.DEEPSEEK_API_KEY }); 
 const MY_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 if (!MY_BOT_TOKEN) { 
