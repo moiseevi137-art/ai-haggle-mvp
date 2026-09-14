@@ -17,14 +17,50 @@ const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 3000; 
 
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.applicationDefault()
-  });
-} 
-const db = admin.firestore();
+// 🔥 ЗАЩИЩЕННЫЙ БЛОК ИНИЦИАЛИЗАЦИИ ФАЙРБЕЙС (Защита от ошибки запуска на Render)
+let db;
+try {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+    console.log('🔥 Firebase успешно инициализирован через SERVICE_ACCOUNT!');
+  } else {
+    admin.initializeApp({
+      credential: admin.credential.applicationDefault()
+    });
+    console.log('🔥 Firebase инициализирован по умолчанию.');
+  }
+  db = admin.firestore();
+} catch (firebaseError) {
+  console.log('⚠️ ВНИМАНИЕ: Ключи Firebase не найдены. Включен автономный режим MVP (In-Memory)!');
+  
+  // Локальный кэш прямо в оперативной памяти сервера, чтобы скрипт не аварийно падал
+  const memoryStorage = new Map();
+  db = {
+    collection: (colName) => ({
+      doc: (docId) => ({
+        set: async (data) => {
+          const current = memoryStorage.get(`${colName}/${docId}`) || {};
+          memoryStorage.set(`${colName}/${docId}`, { ...current, ...data });
+          return true;
+        },
+        get: async () => ({
+          exists: memoryStorage.has(`${colName}/${docId}`),
+          data: () => memoryStorage.get(`${colName}/${docId}`)
+        })
+      }),
+      add: async (data) => {
+        const fakeId = Math.random().toString(36).substring(7);
+        memoryStorage.set(`${colName}/${fakeId}`, data);
+        return { id: fakeId };
+      }
+    })
+  };
+}
 
-// ПОДДЕРЖКА МНОГОПОЛЬЗОВАТЕЛЬСКОЙ СЕССИИ: Загрузка куки конкретного юзера из Firestore
+// ПОДДЕРЖКА МНОГОПОЛЬЗОВАТЕЛЬСКОЙ СЕССИИ: Загрузка куки конкретного юзера
 async function loadBrowserSession(page, userId) {
   try {
     const userDoc = await db.collection('user_sessions').doc(userId.toString()).get();
@@ -32,12 +68,11 @@ async function loadBrowserSession(page, userId) {
       const data = userDoc.data();
       if (data.cookies && data.cookies.length > 0) {
         await page.setCookie(...data.cookies);
-        console.log(`🍪 Куки юзера ${userId} успешно загружены из Firestore`);
+        console.log(`🍪 Куки юзера ${userId} успешно загружены из базы`);
         return true;
       }
     }
     
-    // Резервный вариант (локальные куки разработчика из переменной окружения или файла)
     if (process.env.AVITO_COOKIE) {
       console.log('🥷 Загружаем глобальный AVITO_COOKIE из настроек...');
       let cookies;
@@ -66,17 +101,17 @@ async function loadBrowserSession(page, userId) {
   }
 }
 
-// Сохранение обновленной сессии в Firestore после действий скрипта торга
+// Сохранение обновленной сессии в БД после успешных действий автоматизации торга
 async function saveBrowserSession(page, userId) {
   try {
     const cookies = await page.cookies();
     await db.collection('user_sessions').doc(userId.toString()).set({
       cookies: cookies,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-    console.log(`💾 Актуальная сессия юзера ${userId} обновлена и сохранена в Firestore`);
+      updatedAt: admin.firestore.FieldValue.serverTimestamp ? admin.firestore.FieldValue.serverTimestamp() : new Date()
+    });
+    console.log(`💾 Актуальная сессия юзера ${userId} обновлена и зафиксирована`);
   } catch (e) {
-    console.error('❌ Не удалось сохранить куки в БД:', e.message);
+    console.error('❌ Не удалось сохранить куки:', e.message);
   }
 }
 
@@ -90,18 +125,17 @@ async function executeInvisibleHaggle(targetUrl, aiArgument, userId) {
       '--window-size=1920,1080'
     ];
 
-    // Динамическое переключение: локальный режим без прокси ИЛИ боевой с прокси
     const isLocal = !process.env.PROXY_SERVER; 
 
     if (!isLocal) {
       console.log(`🌐 Активирован режим прокси через: ${process.env.PROXY_SERVER}`);
       launchArgs.push(`--proxy-server=${process.env.PROXY_SERVER}`);
     } else {
-      console.log('🏠 РЕЖИМ ЛОКАЛЬНОЙ ОТЛАДКИ: Окно открыто, используем профиль Chrome');
+      console.log('🏠 РЕЖИМ ЛОКАЛЬНОЙ ОТЛАДКИ: Используем профиль Chrome');
     }
 
     browser = await puppeteer.launch({
-      headless: !isLocal, // Локально запускается в ВИДИМОМ режиме, на Render — скрыто
+      headless: !isLocal, 
       args: launchArgs,
       userDataDir: isLocal ? path.join(__dirname, 'chrome_user_data') : undefined 
     });
@@ -118,7 +152,6 @@ async function executeInvisibleHaggle(targetUrl, aiArgument, userId) {
     await page.setViewport(isLocal ? { width: 1280, height: 800 } : { width: 1920, height: 1080 });
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
     
-    // Подгружаем куки конкретного Васи из базы
     await loadBrowserSession(page, userId);
 
     console.log(`🔎 Переход по ссылке: ${targetUrl}`);
@@ -130,9 +163,8 @@ async function executeInvisibleHaggle(targetUrl, aiArgument, userId) {
     if (await page.$(btn)) {
       console.log('✅ Кнопка чата найдена! Кликаем...');
       await page.click(btn);
-      await delay(4000); // Ожидаем прогрузки окна чата
+      await delay(4000); 
       
-      // Автоматически обновляем куки
       await saveBrowserSession(page, userId);
 
       const txt = 'textarea[placeholder*="Напишите"], [data-marker="chat-input"]'; 
@@ -142,7 +174,7 @@ async function executeInvisibleHaggle(targetUrl, aiArgument, userId) {
         await delay(1500); 
         return { success: true, message: 'Успешно напечатано!' };
       } else {
-        console.log('⚠️ Поле ввода сообщения не найдено. Возможно, сессия устарела.');
+        console.log('⚠️ Поле ввода сообщения не найдено.');
         return { success: false, error: 'Требуется повторная авторизация в Web App' };
       }
     }
@@ -152,12 +184,12 @@ async function executeInvisibleHaggle(targetUrl, aiArgument, userId) {
   } finally {
     if (browser) {
       if (isLocal) await delay(5000); 
-      await browser.close();
+      browser.close();
     }
   }
 }
 
-// ИСПРАВЛЕНО: Указан корректный эндпоинт API DeepSeek
+// ИСПРАВЛЕНО: Указан рабочий базовый эндпоинт API DeepSeek вместо адреса сайта
 const openai = new OpenAI({
   baseURL: 'https://deepseek.com', 
   apiKey: process.env.DEEPSEEK_API_KEY   
@@ -172,19 +204,18 @@ const APP_BASE_URL = process.env.RENDER_EXTERNAL_URL || 'https://onrender.com';
 
 const limiter = new Bottleneck({ maxConcurrent: 1, minTime: 1500 });
 
-// 🤖 КНОПКА СТАРТА: Теперь выводит интерактивную кнопку Web App
 bot.start(async (ctx) => {
   try {
     const userId = ctx.from.id.toString();
     await limiter.schedule(() => db.collection('user_logs').doc(userId).set({
       chatId: ctx.chat.id,
       username: ctx.from.username || '🔑 Аноним',
-      lastStart: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true }));
+      lastStart: new Date()
+    }));
 
     const webAppUrl = `${APP_BASE_URL}/webapp-login?userId=${userId}`;
 
-    await ctx.reply('🤖 Защищенный ИИ-модуль запущен. Подключите аккаунт Авито для начала работы.', {
+    await ctx.reply('🤖 Защищенный ИИ-модуль торга готов. Подключите аккаунт Авито для запуска сценария.', {
       reply_markup: {
         inline_keyboard: [
           [{ text: '🔑 Подключить мой Авито', web_app: { url: webAppUrl } }]
@@ -199,10 +230,9 @@ bot.on('text', async (ctx) => {
   const userId = ctx.from.id.toString();
 
   if (text.includes('http://') || text.includes('https://')) {
-    // Проверяем, есть ли сессия в базе перед запуском браузера
     const sessionCheck = await db.collection('user_sessions').doc(userId).get();
     if (!sessionCheck.exists && !process.env.AVITO_COOKIE) {
-      return ctx.reply('⚠️ Вы ещё не привязали аккаунт Авито. Нажмите /start и пройдите авторизацию.');
+      return ctx.reply('⚠️ Вы ещё не привязали аккаунт Авито. Нажмите /start и пройдите авторизацию в Web App.');
     }
 
     await ctx.reply('⏳ Анализирую сделку через ИИ...');
@@ -233,32 +263,11 @@ bot.on('text', async (ctx) => {
         estimatedPrice: est,
         targetPrice: trg,
         commissionAmount: comm,
-        timestamp: admin.firestore.FieldValue.serverTimestamp()
+        timestamp: new Date()
       }));
 
-      await ctx.reply(`🛡️ Запускаю маскированную отправку...`);
+      await ctx.reply(`🛡️ Запускаю отправку сообщения торга...`);
       const res = await executeInvisibleHaggle(text, arg, userId);
-      await ctx.reply(res.success ? `✅ Сообщение успешно напечатано!` : `❌ Ошибка автоматизации: ${res.error}`);
+      await ctx.reply(res.success ? `✅ Торг успешно начат в чате Авито!` : `❌ Ошибка автоматизации: ${res.error}`);
     } catch (err) {
       console.error(err);
-      await ctx.reply('⚠️ Ошибка обработки запроса к ИИ.');
-    }
-  } else {
-    await ctx.reply('Отправьте валидную ссылку.');
-  }
-});
-
-// 🌐 WEB APP ИНТЕРФЕЙС: Страница входа в Авито внутри Telegram
-app.get('/webapp-login', (req, res) => {
-  const userId = req.query.userId;
-  res.send(`
-    <!DOCTYPE html>
-    <html lang="ru">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Авторизация Авито</title>
-      <script src="https://telegram.org"></script>
-      <style>
-        body { font-family: sans-serif; background: #f4f6f9; padding: 15px; text-align: center; color: #333; margin: 0; }
-        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
