@@ -1,7 +1,6 @@
 require('dotenv').config(); // Подключаем локальные переменные из .env файла
 const { Telegraf } = require('telegraf');
 const express = require('express');
-const admin = require('firebase-admin');
 const Bottleneck = require('bottleneck');
 const OpenAI = require('openai'); 
 const fs = require('fs');
@@ -17,48 +16,29 @@ const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 3000; 
 
-// 🔥 ЗАЩИЩЕННЫЙ БЛОК ИНИЦИАЛИЗАЦИИ ФАЙРБЕЙС (Защита от ошибки запуска на Render)
-let db;
-try {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
-    });
-    console.log('🔥 Firebase успешно инициализирован через SERVICE_ACCOUNT!');
-  } else {
-    admin.initializeApp({
-      credential: admin.credential.applicationDefault()
-    });
-    console.log('🔥 Firebase инициализирован по умолчанию.');
-  }
-  db = admin.firestore();
-} catch (firebaseError) {
-  console.log('⚠️ ВНИМАНИЕ: Ключи Firebase не найдены. Включен автономный режим MVP (In-Memory)!');
-  
-  // Локальный кэш прямо в оперативной памяти сервера, чтобы скрипт не аварийно падал
-  const memoryStorage = new Map();
-  db = {
-    collection: (colName) => ({
-      doc: (docId) => ({
-        set: async (data) => {
-          const current = memoryStorage.get(`${colName}/${docId}`) || {};
-          memoryStorage.set(`${colName}/${docId}`, { ...current, ...data });
-          return true;
-        },
-        get: async () => ({
-          exists: memoryStorage.has(`${colName}/${docId}`),
-          data: () => memoryStorage.get(`${colName}/${docId}`)
-        })
-      }),
-      add: async (data) => {
-        const fakeId = Math.random().toString(36).substring(7);
-        memoryStorage.set(`${colName}/${fakeId}`, data);
-        return { id: fakeId };
-      }
-    })
-  };
-}
+// 🔥 АВТОНОМНОЕ ХРАНИЛИЩЕ В ПАМЯТИ СЕРВЕРА (Замена тяжелого Firebase для работы без багов)
+console.log('🚀 Бот запущен в автономном режиме MVP (Данные хранятся в памяти Render)!');
+const memoryStorage = new Map();
+const db = {
+  collection: (colName) => ({
+    doc: (docId) => ({
+      set: async (data) => {
+        const current = memoryStorage.get(`${colName}/${docId}`) || {};
+        memoryStorage.set(`${colName}/${docId}`, { ...current, ...data });
+        return true;
+      },
+      get: async () => ({
+        exists: memoryStorage.has(`${colName}/${docId}`),
+        data: () => memoryStorage.get(`${colName}/${docId}`)
+      })
+    }),
+    add: async (data) => {
+      const fakeId = Math.random().toString(36).substring(7);
+      memoryStorage.set(`${colName}/${fakeId}`, data);
+      return { id: fakeId };
+    }
+  })
+};
 
 // ПОДДЕРЖКА МНОГОПОЛЬЗОВАТЕЛЬСКОЙ СЕССИИ: Загрузка куки конкретного юзера
 async function loadBrowserSession(page, userId) {
@@ -68,7 +48,7 @@ async function loadBrowserSession(page, userId) {
       const data = userDoc.data();
       if (data.cookies && data.cookies.length > 0) {
         await page.setCookie(...data.cookies);
-        console.log(`🍪 Куки юзера ${userId} успешно загружены из базы`);
+        console.log(`🍪 Куки юзера ${userId} успешно загружены из локальной памяти`);
         return true;
       }
     }
@@ -184,12 +164,12 @@ async function executeInvisibleHaggle(targetUrl, aiArgument, userId) {
   } finally {
     if (browser) {
       if (isLocal) await delay(5000); 
-      await browser.close(); // ИСПРАВЛЕНО: Добавлен await для предотвращения утечек памяти OOM
+      await browser.close();
     }
   }
 }
 
-// ИСПРАВЛЕНО: Указан рабочий базовый эндпоинт API DeepSeek вместо адреса сайта
+// Конструктор API DeepSeek
 const openai = new OpenAI({
   baseURL: 'https://deepseek.com', 
   apiKey: process.env.DEEPSEEK_API_KEY   
@@ -271,3 +251,24 @@ bot.on('text', async (ctx) => {
     } catch (err) {
       console.error(err);
       await ctx.reply('⚠️ Ошибка обработки запроса к ИИ.');
+    }
+  } else {
+    await ctx.reply('Отправьте валидную ссылку.');
+  }
+});
+
+// 🌐 WEB APP ИНТЕРФЕЙС: Страница входа в Авито внутри Telegram
+app.get('/webapp-login', (req, res) => {
+  const userId = req.query.userId;
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Авторизация Авито</title>
+      <script src="https://telegram.org"></script>
+      <style>
+        body { font-family: sans-serif; background: #f4f6f9; padding: 15px; text-align: center; color: #333; margin: 0; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        iframe { width: 100%; height: 420px; border: 1px solid #eee; border-radius: 8px; margin-top: 15px; }
