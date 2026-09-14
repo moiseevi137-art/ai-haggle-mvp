@@ -107,7 +107,7 @@ async function saveBrowserSession(page, userId) {
     const cookies = await page.cookies();
     await db.collection('user_sessions').doc(userId.toString()).set({
       cookies: cookies,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp ? admin.firestore.FieldValue.serverTimestamp() : new Date()
+      updatedAt: new Date()
     });
     console.log(`💾 Актуальная сессия юзера ${userId} обновлена и зафиксирована`);
   } catch (e) {
@@ -184,7 +184,7 @@ async function executeInvisibleHaggle(targetUrl, aiArgument, userId) {
   } finally {
     if (browser) {
       if (isLocal) await delay(5000); 
-      browser.close();
+      await browser.close(); // ИСПРАВЛЕНО: Добавлен await для предотвращения утечек памяти OOM
     }
   }
 }
@@ -246,7 +246,6 @@ bot.on('text', async (ctx) => {
         response_format: { type: "json_object" }
       });
 
-      // ИСПРАВЛЕНО: Добавлен choices[0] для стабильной работы
       const aiData = JSON.parse(comp.choices[0].message.content);
       const est = Number(aiData.estimatedPrice) || 0;
       const trg = Number(aiData.targetPrice) || 0;
@@ -271,3 +270,4 @@ bot.on('text', async (ctx) => {
       await ctx.reply(res.success ? `✅ Торг успешно начат в чате Авито!` : `❌ Ошибка автоматизации: ${res.error}`);
     } catch (err) {
       console.error(err);
+      await ctx.reply('⚠️ Ошибка обработки запроса к ИИ.');
