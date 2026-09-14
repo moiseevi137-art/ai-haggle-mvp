@@ -3,8 +3,6 @@ const { Telegraf } = require('telegraf');
 const express = require('express');
 const Bottleneck = require('bottleneck');
 const OpenAI = require('openai'); 
-const fs = require('fs');
-const path = require('path'); 
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
@@ -14,133 +12,116 @@ const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 3000; 
 
-console.log('🚀 Автономный режим MVP (Память Render)!');
-const memoryStorage = new Map();
+console.log('🚀 Режим MVP (В памяти Render)!');
+const storage = new Map();
 const userStates = new Map();    
-const activeBrowsers = new Map(); 
+const browsers = new Map(); 
 
 const db = {
-  collection: (colName) => ({
-    doc: (docId) => ({
-      set: async (data) => {
-        const current = memoryStorage.get(`${colName}/${docId}`) || {};
-        memoryStorage.set(`${colName}/${docId}`, { ...current, ...data });
+  collection: (col) => ({
+    doc: (id) => ({
+      set: async (d) => {
+        const cur = storage.get(`${col}/${id}`) || {};
+        storage.set(`${col}/${id}`, { ...cur, ...d });
         return true;
       },
       get: async () => ({
-        exists: memoryStorage.has(`${colName}/${docId}`),
-        data: () => memoryStorage.get(`${colName}/${docId}`)
+        exists: storage.has(`${col}/${id}`),
+        data: () => storage.get(`${col}/${id}`)
       })
     }),
-    add: async (data) => {
-      const fakeId = Math.random().toString(36).substring(7);
-      memoryStorage.set(`${colName}/${fakeId}`, data);
-      return { id: fakeId };
+    add: async (d) => {
+      const fId = Math.random().toString(36).substring(7);
+      storage.set(`${col}/${fId}`, d);
+      return { id: fId };
     }
   })
 };
 
-async function loadBrowserSession(page, userId) {
+async function loadSession(page, uid) {
   try {
-    const userDoc = await db.collection('user_sessions').doc(userId.toString()).get();
-    if (userDoc.exists) {
-      const data = userDoc.data();
-      if (data.cookies?.length > 0) { await page.setCookie(...data.cookies); return true; }
-    }
-    if (process.env.AVITO_COOKIE) {
-      let cookies;
-      try { cookies = JSON.parse(process.env.AVITO_COOKIE); } 
-      catch (e) {
-        cookies = process.env.AVITO_COOKIE.split(';').map(p => {
-          const [n, ...v] = p.trim().split('=');
-          return { name: n, value: v.join('='), domain: '.avito.ru', path: '/' };
-        });
-      }
-      if (cookies?.length > 0) { await page.setCookie(...cookies); return true; }
+    const doc = await db.collection('user_sessions').doc(uid.toString()).get();
+    if (doc.exists) {
+      const d = doc.data();
+      if (d.cookies?.length > 0) { await page.setCookie(...d.cookies); return true; }
     }
     return false;
-  } catch (err) { return false; }
+  } catch (e) { return false; }
 }
 
-async function startAvitoAuth(userId, phoneNumber) {
-  const launchArgs = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'];
-  if (process.env.PROXY_SERVER) launchArgs.push(`--proxy-server=${process.env.PROXY_SERVER}`);
-  const browser = await puppeteer.launch({ headless: true, args: launchArgs });
+async function startAvitoAuth(uid, phone) {
+  const args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'];
+  if (process.env.PROXY_SERVER) args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
+  const browser = await puppeteer.launch({ headless: true, args });
   const page = await browser.newPage();
-  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
-  activeBrowsers.set(userId, { browser, page });
+  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+  browsers.set(uid, { browser, page });
   await page.goto('https://avito.ru', { waitUntil: 'networkidle2', timeout: 50000 });
   await delay(2000);
-  const inputSelector = 'input[type="tel"], input[data-marker="phone-input/input"]';
-  await page.waitForSelector(inputSelector, { timeout: 15000 });
-  await page.focus(inputSelector);
-  await humanType(page, inputSelector, phoneNumber);
+  const sel = 'input[type="tel"], input[data-marker="phone-input/input"]';
+  await page.waitForSelector(sel, { timeout: 15000 });
+  await page.focus(sel);
+  await humanType(page, sel, phone);
   await delay(1500);
-  const submitBtn = 'button[type="submit"], button[data-marker="login-form/submit"]';
-  await page.click(submitBtn);
+  const btn = 'button[type="submit"], button[data-marker="login-form/submit"]';
+  await page.click(btn);
   await delay(4000);
-  const smsSelector = 'input[type="number"], input[data-marker="sms-code-input/input"]';
-  const hasSmsField = await page.$(smsSelector).then(el => !!el);
-  if (!hasSmsField) {
-    const bodyText = await page.evaluate(() => document.body.innerText);
-    if (bodyText.includes('капча') || bodyText.includes('картинке')) throw new Error('Авито выдало капчу. Требуются мобильные прокси.');
-    throw new Error('Не удалось дойти до ввода СМС. Проверьте номер.');
+  const smsSel = 'input[type="number"], input[data-marker="sms-code-input/input"]';
+  const hasSms = await page.$(smsSel).then(el => !!el);
+  if (!hasSms) {
+    const txt = await page.evaluate(() => document.body.innerText);
+    if (txt.includes('капча')) throw new Error('Капча! Нужен мобильный прокси.');
+    throw new Error('Не удалось дойти до ввода СМС.');
   }
 }
 
-async function finishAvitoAuth(userId, smsCode) {
-  const session = activeBrowsers.get(userId);
-  if (!session) throw new Error('Сессия авторизации потеряна. Начните сначала.');
-  const { browser, page } = session;
+async function finishAvitoAuth(uid, code) {
+  const sess = browsers.get(uid);
+  if (!sess) throw new Error('Сессия потеряна. Начните сначала.');
+  const { browser, page } = sess;
   try {
-    const smsSelector = 'input[type="number"], input[data-marker="sms-code-input/input"]';
-    await page.focus(smsSelector);
-    await humanType(page, smsSelector, smsCode);
+    const smsSel = 'input[type="number"], input[data-marker="sms-code-input/input"]';
+    await page.focus(smsSel);
+    await humanType(page, smsSel, code);
     await delay(5000);
     const cookies = await page.cookies();
-    const hasSessId = cookies.some(c => c.name.includes('sessid') || c.name.includes('u'));
-    if (hasSessId) {
-      await db.collection('user_sessions').doc(userId).set({ cookies, updatedAt: new Date() });
+    const isOk = cookies.some(c => c.name.includes('sessid') || c.name.includes('u'));
+    if (isOk) {
+      await db.collection('user_sessions').doc(uid).set({ cookies, updatedAt: new Date() });
       return true;
-    } else { throw new Error('Код СМС отклонен Авито.'); }
+    } else { throw new Error('Код СМС отклонен.'); }
   } finally {
     await browser.close();
-    activeBrowsers.delete(userId);
+    browsers.delete(uid);
   }
 }
 
-async function executeInvisibleHaggle(targetUrl, aiArgument, userId) {
+async function executeHaggle(url, arg, uid) {
   let browser;
   try {
-    const launchArgs = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled', '--window-size=1920,1080'];
-    const isLocal = !process.env.PROXY_SERVER; 
-    if (!isLocal) launchArgs.push(`--proxy-server=${process.env.PROXY_SERVER}`);
-    browser = await puppeteer.launch({ headless: !isLocal, args: launchArgs, userDataDir: isLocal ? path.join(__dirname, 'chrome_user_data') : undefined });
+    const args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'];
+    if (process.env.PROXY_SERVER) args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
+    browser = await puppeteer.launch({ headless: true, args });
     const page = await browser.newPage();
-    if (!isLocal && process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
-      await page.authenticate({ username: process.env.PROXY_USERNAME, password: process.env.PROXY_PASSWORD });
-    }
-    await page.setViewport(isLocal ? { width: 1280, height: 800 } : { width: 1920, height: 1080 });
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
-    await loadBrowserSession(page, userId);
-    await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 45000 }); 
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    await loadSession(page, uid);
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 45000 }); 
     await humanScroll(page);
     await delay(2000); 
     const btn = 'button[data-marker="messenger-button/button"]'; 
     if (await page.$(btn)) {
       await page.click(btn);
       await delay(4000); 
-      const currentCookies = await page.cookies();
-      await db.collection('user_sessions').doc(userId).set({ cookies: currentCookies, updatedAt: new Date() });
+      const ck = await page.cookies();
+      await db.collection('user_sessions').doc(uid).set({ cookies: ck, updatedAt: new Date() });
       const txt = 'textarea[placeholder*="Напишите"], [data-marker="chat-input"]'; 
       if (await page.$(txt)) {
-        await humanType(page, txt, aiArgument);
+        await humanType(page, txt, arg);
         await delay(1500); 
         return { success: true };
       }
-      return { success: false, error: 'Поле ввода не найдено' };
     }
-    return { success: false, error: 'Кнопка чата не найдена' };
+    return { success: false, error: 'Кнопка чата или инпут не найдены' };
   } catch (e) { return { success: false, error: e.message }; } 
   finally { if (browser) await browser.close(); }
 }
@@ -150,16 +131,16 @@ const MY_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!MY_BOT_TOKEN) { process.exit(1); }
 
 const bot = new Telegraf(MY_BOT_TOKEN);
-const TELEGRAM_WEBHOOK_PATH = `/webhook/${MY_BOT_TOKEN}`;
-const APP_BASE_URL = process.env.RENDER_EXTERNAL_URL || 'https://onrender.com';
+const TG_PATH = `/webhook/${MY_BOT_TOKEN}`;
+const APP_URL = process.env.RENDER_EXTERNAL_URL || 'https://onrender.com';
 const limiter = new Bottleneck({ maxConcurrent: 1, minTime: 1500 });
 
 bot.start(async (ctx) => {
   try {
-    const userId = ctx.from.id.toString();
-    userStates.delete(userId);
-    await limiter.schedule(() => db.collection('user_logs').doc(userId).set({ chatId: ctx.chat.id, username: ctx.from.username || '🔑 Аноним', lastStart: new Date() }));
-    await ctx.reply('🤖 ИИ-модуль торга готов. Подключите Авито в диалоге:', {
+    const uid = ctx.from.id.toString();
+    userStates.delete(uid);
+    await limiter.schedule(() => db.collection('user_logs').doc(uid).set({ chatId: ctx.chat.id, lastStart: new Date() }));
+    await ctx.reply('🤖 ИИ-модуль торга готов. Подключите Авито:', {
       reply_markup: { inline_keyboard: [[{ text: '🔑 Привязать мой Авито', callback_data: 'start_auth' }]] }
     });
   } catch (e) { console.error(e.message); }
@@ -167,51 +148,49 @@ bot.start(async (ctx) => {
 
 bot.action('start_auth', async (ctx) => {
   await ctx.answerCbQuery();
-  const userId = ctx.from.id.toString();
-  userStates.set(userId, { step: 'WAITING_FOR_PHONE' });
-  await ctx.reply('📞 Отправьте номер телефона Авито в формате: 79991112233');
+  const uid = ctx.from.id.toString();
+  userStates.set(uid, { step: 'PHONE' });
+  await ctx.reply('📞 Отправьте ваш номер Авито в формате: 79991112233');
 });
 
 bot.on('text', async (ctx) => {
   const text = ctx.message.text.trim();
-  const userId = ctx.from.id.toString();
-  const state = userStates.get(userId);
+  const uid = ctx.from.id.toString();
+  const state = userStates.get(uid);
 
-  if (state?.step === 'WAITING_FOR_PHONE') {
-    if (!/^\d{11}$/.test(text)) return ctx.reply('❌ Номер должен состоять строго из 11 цифр (например, 79991112233):');
-    await ctx.reply('⏳ Робот запрашивает СМС код от Авито... Подождите 10-15 секунд.');
+  if (state?.step === 'PHONE') {
+    if (!/^\d{11}$/.test(text)) return ctx.reply('❌ Введите строго 11 цифр (например, 79991112233):');
+    await ctx.reply('⏳ Запрашиваю СМС от Авито... Подождите 10-15 сек.');
     try {
-      await startAvitoAuth(userId, text);
-      userStates.set(userId, { step: 'WAITING_FOR_SMS' });
+      await startAvitoAuth(uid, text);
+      userStates.set(uid, { step: 'SMS' });
       await ctx.reply('💬 Авито выслало код. Введите его сюда цифрами:');
     } catch (err) {
-      userStates.delete(userId);
-      if (activeBrowsers.has(userId)) { await activeBrowsers.get(userId).browser.close(); activeBrowsers.delete(userId); }
-      await ctx.reply(`❌ Ошибка Авито: ${err.message}\nНачните заново с команды /start`);
+      userStates.delete(uid);
+      if (browsers.has(uid)) { await browsers.get(uid).browser.close(); browsers.delete(uid); }
+      await ctx.reply(`❌ Ошибка: ${err.message}\nНачните заново с команды /start`);
     }
     return;
   }
 
-  if (state?.step === 'WAITING_FOR_SMS') {
+  if (state?.step === 'SMS') {
     await ctx.reply('⚙️ Проверяю код подтверждения...');
     try {
-      const success = await finishAvitoAuth(userId, text);
-      if (success) {
-        userStates.delete(userId);
-        await ctx.reply('🎉 Магия сработала! Ваш профиль успешно подключен. Теперь вы можете отправлять ссылки на товары для автоматического торга.');
+      const ok = await finishAvitoAuth(uid, text);
+      if (ok) {
+        userStates.delete(uid);
+        await ctx.reply('🎉 Магия сработала! Ваш профиль подключен. Теперь вы можете отправлять ссылки для торга.');
       }
     } catch (err) {
-      userStates.delete(userId);
-      await ctx.reply(`❌ Сбой проверки СМС: ${err.message}\nНажмите /start для новой попытки.`);
+      userStates.delete(uid);
+      await ctx.reply(`❌ Сбой проверки: ${err.message}\nНажмите /start для новой попытки.`);
     }
     return;
   }
 
   if (text.includes('http://') || text.includes('https://')) {
-    const sessionCheck = await db.collection('user_sessions').doc(userId).get();
-    if (!sessionCheck.exists && !process.env.AVITO_COOKIE) {
-      return ctx.reply('⚠️ Сначала нажмите /start и привяжите аккаунт Авито.');
-    }
+    const check = await db.collection('user_sessions').doc(uid).get();
+    if (!check.exists) return ctx.reply('⚠️ Сначала нажмите /start и привяжите Авито.');
     await ctx.reply('⏳ Анализирую сделку через ИИ...');
     try {
       const comp = await openai.chat.completions.create({
@@ -222,3 +201,33 @@ bot.on('text', async (ctx) => {
         ],
         response_format: { type: "json_object" }
       });
+      const ai = JSON.parse(comp.choices[0].message.content);
+      const est = Number(ai.estimatedPrice) || 0;
+      const trg = Number(ai.targetPrice) || 0;
+      const arg = ai.argument;
+      const profit = est > trg ? (est - trg) : 0;
+      const comm = Math.round(profit * 0.30);
+
+      await ctx.reply(`📊 **ИИ-АНАЛИЗ:**\n💰 Цена: \`${est} руб.\`\n🎯 Торг до: \`${trg} руб.\`\n📈 Выгода: \`${profit} руб.\`\nКомиссия (30%): \`${comm} руб.\`\n\n📝 Предложение:\n_"${arg}"_`, { parse_mode: 'Markdown' });
+      await db.collection('bids_history').add({ uid, targetUrl: text, estimatedPrice: est, targetPrice: trg, commissionAmount: comm, timestamp: new Date() });
+      
+      await ctx.reply(`🛡️ Запускаю отправку торга в чат Авито...`);
+      const res = await executeHaggle(text, arg, uid);
+      await ctx.reply(res.success ? `✅ Сообщение отправлено!` : `❌ Ошибка автоматизации: ${res.error}`);
+    } catch (err) { await ctx.reply('⚠️ Ошибка запроса к ИИ.'); }
+  } else { await ctx.reply('Отправьте валидную ссылку.'); }
+});
+
+app.post(TG_PATH, (req, res) => { bot.handleUpdate(req.body, res); });
+app.get('/', (req, res) => { res.send('🚀 Сервер активен'); });
+
+app.listen(PORT, async () => {
+  console.log(`📡 Порт: ${PORT}`);
+  try {
+    await bot.telegram.setWebhook(`${APP_URL}${TG_PATH}`);
+    console.log(`[Telegram] Вебхук зарегистрирован!`);
+  } catch (e) { console.error(e.message); }
+});
+
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
