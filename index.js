@@ -16,6 +16,9 @@ const PORT = process.env.PORT || 3000;
 
 console.log('🚀 Автономный режим MVP (Память Render)!');
 const memoryStorage = new Map();
+const userStates = new Map();    
+const activeBrowsers = new Map(); 
+
 const db = {
   collection: (colName) => ({
     doc: (docId) => ({
@@ -42,10 +45,7 @@ async function loadBrowserSession(page, userId) {
     const userDoc = await db.collection('user_sessions').doc(userId.toString()).get();
     if (userDoc.exists) {
       const data = userDoc.data();
-      if (data.cookies?.length > 0) {
-        await page.setCookie(...data.cookies);
-        return true;
-      }
+      if (data.cookies?.length > 0) { await page.setCookie(...data.cookies); return true; }
     }
     if (process.env.AVITO_COOKIE) {
       let cookies;
@@ -58,20 +58,55 @@ async function loadBrowserSession(page, userId) {
       }
       if (cookies?.length > 0) { await page.setCookie(...cookies); return true; }
     }
-    const pth = path.join(__dirname, 'cookies.json');
-    if (fs.existsSync(pth)) {
-      const d = JSON.parse(fs.readFileSync(pth, 'utf8'));
-      if (d?.length > 0) { await page.setCookie(...d); return true; }
-    }
     return false;
   } catch (err) { return false; }
 }
 
-async function saveBrowserSession(page, userId) {
+async function startAvitoAuth(userId, phoneNumber) {
+  const launchArgs = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'];
+  if (process.env.PROXY_SERVER) launchArgs.push(`--proxy-server=${process.env.PROXY_SERVER}`);
+  const browser = await puppeteer.launch({ headless: true, args: launchArgs });
+  const page = await browser.newPage();
+  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
+  activeBrowsers.set(userId, { browser, page });
+  await page.goto('https://avito.ru', { waitUntil: 'networkidle2', timeout: 50000 });
+  await delay(2000);
+  const inputSelector = 'input[type="tel"], input[data-marker="phone-input/input"]';
+  await page.waitForSelector(inputSelector, { timeout: 15000 });
+  await page.focus(inputSelector);
+  await humanType(page, inputSelector, phoneNumber);
+  await delay(1500);
+  const submitBtn = 'button[type="submit"], button[data-marker="login-form/submit"]';
+  await page.click(submitBtn);
+  await delay(4000);
+  const smsSelector = 'input[type="number"], input[data-marker="sms-code-input/input"]';
+  const hasSmsField = await page.$(smsSelector).then(el => !!el);
+  if (!hasSmsField) {
+    const bodyText = await page.evaluate(() => document.body.innerText);
+    if (bodyText.includes('капча') || bodyText.includes('картинке')) throw new Error('Авито выдало капчу. Требуются мобильные прокси.');
+    throw new Error('Не удалось дойти до ввода СМС. Проверьте номер.');
+  }
+}
+
+async function finishAvitoAuth(userId, smsCode) {
+  const session = activeBrowsers.get(userId);
+  if (!session) throw new Error('Сессия авторизации потеряна. Начните сначала.');
+  const { browser, page } = session;
   try {
+    const smsSelector = 'input[type="number"], input[data-marker="sms-code-input/input"]';
+    await page.focus(smsSelector);
+    await humanType(page, smsSelector, smsCode);
+    await delay(5000);
     const cookies = await page.cookies();
-    await db.collection('user_sessions').doc(userId.toString()).set({ cookies: cookies, updatedAt: new Date() });
-  } catch (e) { console.error(e.message); }
+    const hasSessId = cookies.some(c => c.name.includes('sessid') || c.name.includes('u'));
+    if (hasSessId) {
+      await db.collection('user_sessions').doc(userId).set({ cookies, updatedAt: new Date() });
+      return true;
+    } else { throw new Error('Код СМС отклонен Авито.'); }
+  } finally {
+    await browser.close();
+    activeBrowsers.delete(userId);
+  }
 }
 
 async function executeInvisibleHaggle(targetUrl, aiArgument, userId) {
@@ -80,28 +115,23 @@ async function executeInvisibleHaggle(targetUrl, aiArgument, userId) {
     const launchArgs = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled', '--window-size=1920,1080'];
     const isLocal = !process.env.PROXY_SERVER; 
     if (!isLocal) launchArgs.push(`--proxy-server=${process.env.PROXY_SERVER}`);
-
     browser = await puppeteer.launch({ headless: !isLocal, args: launchArgs, userDataDir: isLocal ? path.join(__dirname, 'chrome_user_data') : undefined });
     const page = await browser.newPage();
-
     if (!isLocal && process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
       await page.authenticate({ username: process.env.PROXY_USERNAME, password: process.env.PROXY_PASSWORD });
     }
-
     await page.setViewport(isLocal ? { width: 1280, height: 800 } : { width: 1920, height: 1080 });
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
     await loadBrowserSession(page, userId);
-
     await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 45000 }); 
     await humanScroll(page);
     await delay(2000); 
-
     const btn = 'button[data-marker="messenger-button/button"]'; 
     if (await page.$(btn)) {
       await page.click(btn);
       await delay(4000); 
-      await saveBrowserSession(page, userId);
-
+      const currentCookies = await page.cookies();
+      await db.collection('user_sessions').doc(userId).set({ cookies: currentCookies, updatedAt: new Date() });
       const txt = 'textarea[placeholder*="Напишите"], [data-marker="chat-input"]'; 
       if (await page.$(txt)) {
         await humanType(page, txt, aiArgument);
@@ -127,17 +157,56 @@ const limiter = new Bottleneck({ maxConcurrent: 1, minTime: 1500 });
 bot.start(async (ctx) => {
   try {
     const userId = ctx.from.id.toString();
+    userStates.delete(userId);
     await limiter.schedule(() => db.collection('user_logs').doc(userId).set({ chatId: ctx.chat.id, username: ctx.from.username || '🔑 Аноним', lastStart: new Date() }));
-    const webAppUrl = `${APP_BASE_URL}/webapp-login?userId=${userId}`;
-    await ctx.reply('🤖 ИИ-модуль торга готов. Подключите Авито:', {
-      reply_markup: { inline_keyboard: [[{ text: '🔑 Подключить мой Авито', web_app: { url: webAppUrl } }]] }
+    await ctx.reply('🤖 ИИ-модуль торга готов. Подключите Авито в диалоге:', {
+      reply_markup: { inline_keyboard: [[{ text: '🔑 Привязать мой Авито', callback_data: 'start_auth' }]] }
     });
   } catch (e) { console.error(e.message); }
 });
 
-bot.on('text', async (ctx) => {
-  const text = ctx.message.text;
+bot.action('start_auth', async (ctx) => {
+  await ctx.answerCbQuery();
   const userId = ctx.from.id.toString();
+  userStates.set(userId, { step: 'WAITING_FOR_PHONE' });
+  await ctx.reply('📞 Отправьте номер телефона Авито в формате: 79991112233');
+});
+
+bot.on('text', async (ctx) => {
+  const text = ctx.message.text.trim();
+  const userId = ctx.from.id.toString();
+  const state = userStates.get(userId);
+
+  if (state?.step === 'WAITING_FOR_PHONE') {
+    if (!/^\d{11}$/.test(text)) return ctx.reply('❌ Номер должен состоять строго из 11 цифр (например, 79991112233):');
+    await ctx.reply('⏳ Робот запрашивает СМС код от Авито... Подождите 10-15 секунд.');
+    try {
+      await startAvitoAuth(userId, text);
+      userStates.set(userId, { step: 'WAITING_FOR_SMS' });
+      await ctx.reply('💬 Авито выслало код. Введите его сюда цифрами:');
+    } catch (err) {
+      userStates.delete(userId);
+      if (activeBrowsers.has(userId)) { await activeBrowsers.get(userId).browser.close(); activeBrowsers.delete(userId); }
+      await ctx.reply(`❌ Ошибка Авито: ${err.message}\nНачните заново с команды /start`);
+    }
+    return;
+  }
+
+  if (state?.step === 'WAITING_FOR_SMS') {
+    await ctx.reply('⚙️ Проверяю код подтверждения...');
+    try {
+      const success = await finishAvitoAuth(userId, text);
+      if (success) {
+        userStates.delete(userId);
+        await ctx.reply('🎉 Магия сработала! Ваш профиль успешно подключен. Теперь вы можете отправлять ссылки на товары для автоматического торга.');
+      }
+    } catch (err) {
+      userStates.delete(userId);
+      await ctx.reply(`❌ Сбой проверки СМС: ${err.message}\nНажмите /start для новой попытки.`);
+    }
+    return;
+  }
+
   if (text.includes('http://') || text.includes('https://')) {
     const sessionCheck = await db.collection('user_sessions').doc(userId).get();
     if (!sessionCheck.exists && !process.env.AVITO_COOKIE) {
@@ -153,50 +222,3 @@ bot.on('text', async (ctx) => {
         ],
         response_format: { type: "json_object" }
       });
-      const aiData = JSON.parse(comp.choices[0].message.content);
-      const est = Number(aiData.estimatedPrice) || 0;
-      const trg = Number(aiData.targetPrice) || 0;
-      const arg = aiData.argument;
-      const profit = est > trg ? (est - trg) : 0;
-      const comm = Math.round(profit * 0.30);
-
-      await ctx.reply(`📊 **ИИ-АНАЛИЗ:**\n💰 Цена: \`${est} руб.\`\n🎯 Торг до: \`${trg} руб.\`\n📈 Выгода: \`${profit} руб.\`\nКомиссия (30%): \`${comm} руб.\`\n\n📝 Предложение:\n_"${arg}"_`, { parse_mode: 'Markdown' });
-      await db.collection('bids_history').add({ userId, targetUrl: text, estimatedPrice: est, targetPrice: trg, commissionAmount: comm, timestamp: new Date() });
-      
-      await ctx.reply(`🛡️ Запускаю отправку...`);
-      const res = await executeInvisibleHaggle(text, arg, userId);
-      await ctx.reply(res.success ? `✅ Сообщение отправлено!` : `❌ Ошибка автоматизации: ${res.error}`);
-    } catch (err) { await ctx.reply('⚠️ Ошибка запроса к ИИ.'); }
-  } else { await ctx.reply('Отправьте валидную ссылку.'); }
-});
-
-app.get('/webapp-login', (req, res) => {
-  res.send(`<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Авито</title><script src="https://telegram.org"></script><style>body{font-family:sans-serif;background:#f4f6f9;text-align:center;margin:0;padding:15px}.card{background:#fff;padding:20px;border-radius:12px}iframe{width:100%;height:400px;border:1px solid #eee;border-radius:8px;margin-top:15px}button{background:#007bff;color:#fff;border:none;padding:12px;border-radius:8px;width:100%;margin-top:15px;font-weight:700;cursor:pointer}</style></head><body><div class="card"><h3>Вход в Авито</h3><p style="font-size:13px;color:#666">Войдите в профиль во фрейме и нажмите синхронизацию.</p><iframe src="https://avito.ru"></iframe><button onclick="sync()">✅ Синхронизировать профиль</button></div><script>window.Telegram.WebApp.ready();window.Telegram.WebApp.expand();async function sync(){const t=prompt("Вставьте строку cookie Авито:");if(!t)return;const r=await fetch('/api/save-cookies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:"${req.query.userId}",cookiesRaw:t})});const d=await r.json();if(d.success){alert("🎉 Подключено!");window.Telegram.WebApp.close()}else{alert("Ошибка")}}</script></body></html>`);
-});
-
-app.post('/api/save-cookies', async (req, res) => {
-  try {
-    const { userId, cookiesRaw } = req.body;
-    if (!userId || !cookiesRaw) return res.status(400).json({ success: false });
-    const parsedCookies = cookiesRaw.split(';').map(p => {
-      const [n, ...v] = p.trim().split('=');
-      return { name: n, value: v.join('='), domain: '.avito.ru', path: '/' };
-    });
-    await db.collection('user_sessions').doc(userId.toString()).set({ cookies: parsedCookies, updatedAt: new Date() });
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ success: false }); }
-});
-
-app.post(TELEGRAM_WEBHOOK_PATH, (req, res) => { bot.handleUpdate(req.body, res); });
-app.get('/', (req, res) => { res.send('🚀 Сервер активен'); });
-
-app.listen(PORT, async () => {
-  console.log(`📡 Порт: ${PORT}`);
-  try {
-    await bot.telegram.setWebhook(`${APP_BASE_URL}${TELEGRAM_WEBHOOK_PATH}`);
-    console.log(`[Telegram] Вебхук зарегистрирован!`);
-  } catch (e) { console.error(e.message); }
-});
-
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
