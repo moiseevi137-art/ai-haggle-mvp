@@ -1,14 +1,7 @@
 require('dotenv').config();
 const express = require('express');
-const { Telegraf } = require('telegraf');
-const Bottleneck = require('bottleneck');
-const OpenAI = require('openai'); 
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-puppeteer.use(StealthPlugin());
-const { humanType, humanScroll, delay } = require('./humanEmulation'); 
 
-// 1. ИНИЦИАЛИЗАЦИЯ EXPRESS И МГНОВЕННЫЙ ЗАПУСК ПОРТА ДЛЯ RENDER
+// 1. МГНОВЕННЫЙ ЗАПУСК СЕРВЕРА ДЛЯ СТАБИЛЬНОГО ДЕПЛОЯ НА RENDER
 const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 3000; 
@@ -17,6 +10,8 @@ app.get('/', (req, res) => { res.send('🚀 Сервер активен'); });
 
 app.listen(PORT, () => {
   console.log(`📡 Порт: ${PORT}. Сервер успешно поднят и слушает запросы Render.`);
+  // Инициализируем бота только после успешного открытия порта
+  initBot().catch(err => console.error('Ошибка инициализации логики:', err.message));
 });
 
 console.log('🚀 Режим MVP (В памяти Render)!');
@@ -57,6 +52,12 @@ async function loadSession(page, uid) {
 }
 
 async function startAvitoAuth(uid, phone) {
+  // Ленивая загрузка зависимостей Puppeteer
+  const puppeteer = require('puppeteer-extra');
+  const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+  if (puppeteer.plugins?.length === 0) puppeteer.use(StealthPlugin());
+  const { humanType, delay } = require('./humanEmulation');
+
   const args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'];
   const isLocal = !process.env.PROXY_SERVER;
 
@@ -65,7 +66,6 @@ async function startAvitoAuth(uid, phone) {
   const browser = await puppeteer.launch({ headless: true, args });
   const page = await browser.newPage();
   
-  // АВТОРИЗАЦИЯ ПРОКСИ ДЛЯ СМС: Передаем логин и пароль мобильного прокси
   if (!isLocal && process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
     await page.authenticate({ username: process.env.PROXY_USERNAME, password: process.env.PROXY_PASSWORD });
   }
@@ -74,7 +74,6 @@ async function startAvitoAuth(uid, phone) {
   browsers.set(uid, { browser, page });
   
   console.log(`🤖 Запрос СМС через прокси для: ${phone}`);
-  // Переходим сразу на страницу логина, чтобы открылась форма ввода телефона
   await page.goto('https://avito.ru', { waitUntil: 'networkidle2', timeout: 50000 });
   await delay(3000);
 
@@ -98,6 +97,7 @@ async function startAvitoAuth(uid, phone) {
 }
 
 async function finishAvitoAuth(uid, code) {
+  const { humanType, delay } = require('./humanEmulation');
   const sess = browsers.get(uid);
   if (!sess) throw new Error('Сессия потеряна. Начните сначала.');
   const { browser, page } = sess;
@@ -119,6 +119,12 @@ async function finishAvitoAuth(uid, code) {
 }
 
 async function executeHaggle(url, arg, uid) {
+  // Ленивая загрузка зависимостей Puppeteer
+  const puppeteer = require('puppeteer-extra');
+  const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+  if (puppeteer.plugins?.length === 0) puppeteer.use(StealthPlugin());
+  const { humanType, humanScroll, delay } = require('./humanEmulation');
+
   let browser;
   try {
     const args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'];
@@ -129,7 +135,6 @@ async function executeHaggle(url, arg, uid) {
     browser = await puppeteer.launch({ headless: true, args });
     const page = await browser.newPage();
     
-    // АВТОРИЗАЦИЯ ПРОКСИ ДЛЯ ТОРГА
     if (!isLocal && process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
       await page.authenticate({ username: process.env.PROXY_USERNAME, password: process.env.PROXY_PASSWORD });
     }
@@ -158,94 +163,90 @@ async function executeHaggle(url, arg, uid) {
   finally { if (browser) await browser.close(); }
 }
 
-const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: process.env.DEEPSEEK_API_KEY }); 
-const MY_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-
-if (!MY_BOT_TOKEN) { 
-  console.error('❌ КРИТИЧЕСКАЯ ОШИБКА: TELEGRAM_BOT_TOKEN отсутствует в настройках!');
-  process.exit(1); 
-}
-
-const bot = new Telegraf(MY_BOT_TOKEN);
-const TG_PATH = `/webhook/${MY_BOT_TOKEN}`;
-const APP_URL = process.env.RENDER_EXTERNAL_URL || 'https://onrender.com';
-const limiter = new Bottleneck({ maxConcurrent: 1, minTime: 1500 });
-
-bot.start(async (ctx) => {
-  try {
-    const uid = ctx.from.id.toString();
-    userStates.delete(uid);
-    await limiter.schedule(() => db.collection('user_logs').doc(uid).set({ chatId: ctx.chat.id, lastStart: new Date() }));
-    await ctx.reply('🤖 ИИ-модуль торга готов. Подключите Авито:', {
-      reply_markup: { inline_keyboard: [[{ text: '🔑 Привязать мой Авито', callback_data: 'start_auth' }]] }
-    });
-  } catch (e) { console.error(e.message); }
-});
-
-bot.action('start_auth', async (ctx) => {
-  await ctx.answerCbQuery();
-  const uid = ctx.from.id.toString();
-  userStates.set(uid, { step: 'PHONE' });
-  await ctx.reply('📞 Отправьте ваш номер Авито в формате: 79991112233');
-});
-
-bot.on('text', async (ctx) => {
-  const text = ctx.message.text.trim();
-  const uid = ctx.from.id.toString();
-  const state = userStates.get(uid);
-
-  if (state?.step === 'PHONE') {
-    if (!/^\d{11}$/.test(text)) return ctx.reply('❌ Введите строго 11 цифр (например, 79991112233):');
-    await ctx.reply('⏳ Запрашиваю СМС от Авито... Подождите 10-15 сек.');
-    try {
-      await startAvitoAuth(uid, text);
-      userStates.set(uid, { step: 'SMS' });
-      await ctx.reply('💬 Авито выслало код. Введите его сюда цифрами:');
-    } catch (err) {
-      userStates.delete(uid);
-      if (browsers.has(uid)) { await browsers.get(uid).browser.close(); browsers.delete(uid); }
-      await ctx.reply(`❌ Ошибка: ${err.message}\nНачните заново с команды /start`);
-    }
+// 2. ИЗОЛИРОВАННАЯ ИНИЦИАЛИЗАЦИЯ БОТА И ОСТАЛЬНОЙ ЛОГИКИ
+async function initBot() {
+  const MY_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+  if (!MY_BOT_TOKEN) { 
+    console.error('❌ КРИТИЧЕСКАЯ ОШИБКА: TELEGRAM_BOT_TOKEN отсутствует в настройках!');
     return;
   }
 
-  if (state?.step === 'SMS') {
-    await ctx.reply('⚙️ Проверяю код подтверждения...');
-    try {
-      const ok = await finishAvitoAuth(uid, text);
-      if (ok) {
-        userStates.delete(uid);
-        await ctx.reply('🎉 Магия сработала! Ваш профиль подключен. Теперь вы можете отправлять ссылки для торга.');
-      }
-    } catch (err) {
-      userStates.delete(uid);
-      await ctx.reply(`❌ Сбой проверки: ${err.message}\nНажмите /start для новой попытки.`);
-    }
-    return;
-  }
+  // Ленивый импорт тяжелых библиотек логики
+  const { Telegraf } = require('telegraf');
+  const Bottleneck = require('bottleneck');
+  const OpenAI = require('openai');
 
-  if (text.includes('http://') || text.includes('https://')) {
-    const check = await db.collection('user_sessions').doc(uid).get();
-    if (!check.exists) return ctx.reply('⚠️ Сначала нажмите /start и привяжите Авито.');
-    await ctx.reply('⏳ Анализирую сделку через ИИ...');
+  const openai = new OpenAI({ baseURL: 'https://deepseek.com', apiKey: process.env.DEEPSEEK_API_KEY }); 
+  const bot = new Telegraf(MY_BOT_TOKEN);
+  const TG_PATH = `/webhook/${MY_BOT_TOKEN}`;
+  const APP_URL = process.env.RENDER_EXTERNAL_URL || 'https://onrender.com';
+  const limiter = new Bottleneck({ maxConcurrent: 1, minTime: 1500 });
+
+  bot.start(async (ctx) => {
     try {
-      const comp = await openai.chat.completions.create({
-        model: "deepseek-chat",
-        messages: [
-          { role: "system", content: "Верни ответ СТРОГО в формате JSON с полями: {\"estimatedPrice\": число, \"targetPrice\": число, \"argument\": \"текст торга\"}" },
-          { role: "user", content: `Сделай торг для: ${text}` }
-        ],
-        response_format: { type: "json_object" }
+      const uid = ctx.from.id.toString();
+      userStates.delete(uid);
+      await limiter.schedule(() => db.collection('user_logs').doc(uid).set({ chatId: ctx.chat.id, lastStart: new Date() }));
+      await ctx.reply('🤖 ИИ-модуль торга готов. Подключите Авито:', {
+        reply_markup: { inline_keyboard: [[{ text: '🔑 Привязать мой Авито', callback_data: 'start_auth' }]] }
       });
-      const ai = JSON.parse(comp.choices[0].message.content);
-      const est = Number(ai.estimatedPrice) || 0;
-      const trg = Number(ai.targetPrice) || 0;
-      const arg = ai.argument;
-      const profit = est > trg ? (est - trg) : 0;
-      const comm = Math.round(profit * 0.30);
+    } catch (e) { console.error(e.message); }
+  });
 
-      await ctx.reply(`📊 **ИИ-АНАЛИЗ:**\n💰 Цена: \`${est} руб.\`\n🎯 Торг до: \`${trg} руб.\`\n📈 Выгода: \`${profit} руб.\`\nКомиссия (30%): \`${comm} руб.\`\n\n📝 Предложение:\n_"${arg}"_`, { parse_mode: 'Markdown' });
-      await db.collection('bids_history').add({ uid, targetUrl: text, estimatedPrice: est, targetPrice: trg, commissionAmount: comm, timestamp: new Date() });
-      
-      await ctx.reply(`🛡️ Запускаю отправку торга в чат Авито...`);
-      const res = await executeHaggle(text, arg, uid);
+  bot.action('start_auth', async (ctx) => {
+    await ctx.answerCbQuery();
+    const uid = ctx.from.id.toString();
+    userStates.set(uid, { step: 'PHONE' });
+    await ctx.reply('📞 Отправьте ваш номер Авито в формате: 79991112233');
+  });
+
+  bot.on('text', async (ctx) => {
+    const text = ctx.message.text.trim();
+    const uid = ctx.from.id.toString();
+    const state = userStates.get(uid);
+
+    if (state?.step === 'PHONE') {
+      if (!/^\d{11}$/.test(text)) return ctx.reply('❌ Введите строго 11 цифр (например, 79991112233):');
+      await ctx.reply('⏳ Запрашиваю СМС от Авито... Подождите 10-15 сек.');
+      try {
+        await startAvitoAuth(uid, text);
+        userStates.set(uid, { step: 'SMS' });
+        await ctx.reply('💬 Авито выслало код. Введите его сюда цифрами:');
+      } catch (err) {
+        userStates.delete(uid);
+        if (browsers.has(uid)) { await browsers.get(uid).browser.close(); browsers.delete(uid); }
+        await ctx.reply(`❌ Ошибка: ${err.message}\nНачните заново с команды /start`);
+      }
+      return;
+    }
+
+    if (state?.step === 'SMS') {
+      await ctx.reply('⚙️ Проверяю код подтверждения...');
+      try {
+        const ok = await finishAvitoAuth(uid, text);
+        if (ok) {
+          userStates.delete(uid);
+          await ctx.reply('🎉 Магия сработала! Ваш профиль подключен. Теперь вы можете отправлять ссылки для торга.');
+        }
+      } catch (err) {
+        userStates.delete(uid);
+        await ctx.reply(`❌ Сбой проверки: ${err.message}\nНажмите /start для новой попытки.`);
+      }
+      return;
+    }
+
+    if (text.includes('http://') || text.includes('https://')) {
+      const check = await db.collection('user_sessions').doc(uid).get();
+      if (!check.exists) return ctx.reply('⚠️ Сначала нажмите /start и привяжите Авито.');
+      await ctx.reply('⏳ Анализирую сделку через ИИ...');
+      try {
+        const comp = await openai.chat.completions.create({
+          model: "deepseek-chat",
+          messages: [
+            { role: "system", content: "Верни ответ СТРОГО в формате JSON с полями: {\"estimatedPrice\": число, \"targetPrice\": число, \"argument\": \"текст торга\"}" },
+            { role: "user", content: `Сделай торг для: ${text}` }
+          ],
+          response_format: { type: "json_object" }
+        });
+        const ai = JSON.parse(comp.choices[0].message.content);
+        const est = Number(ai.estimatedPrice) || 0;
