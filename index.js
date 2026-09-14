@@ -51,26 +51,41 @@ async function loadSession(page, uid) {
 
 async function startAvitoAuth(uid, phone) {
   const args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'];
-  if (process.env.PROXY_SERVER) args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
+  const isLocal = !process.env.PROXY_SERVER;
+
+  if (!isLocal) args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
+  
   const browser = await puppeteer.launch({ headless: true, args });
   const page = await browser.newPage();
-  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+  
+  // АВТОРИЗАЦИЯ ПРОКСИ ДЛЯ СМС: Передаем логин и пароль мобильного прокси
+  if (!isLocal && process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
+    await page.authenticate({ username: process.env.PROXY_USERNAME, password: process.env.PROXY_PASSWORD });
+  }
+
+  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
   browsers.set(uid, { browser, page });
+  
+  console.log(`🤖 Запрос СМС через прокси для: ${phone}`);
+  // Переходим сразу на страницу логина, чтобы открылась форма ввода телефона
   await page.goto('https://avito.ru', { waitUntil: 'networkidle2', timeout: 50000 });
-  await delay(2000);
+  await delay(3000);
+
   const sel = 'input[type="tel"], input[data-marker="phone-input/input"]';
   await page.waitForSelector(sel, { timeout: 15000 });
   await page.focus(sel);
   await humanType(page, sel, phone);
   await delay(1500);
+  
   const btn = 'button[type="submit"], button[data-marker="login-form/submit"]';
   await page.click(btn);
   await delay(4000);
+  
   const smsSel = 'input[type="number"], input[data-marker="sms-code-input/input"]';
   const hasSms = await page.$(smsSel).then(el => !!el);
   if (!hasSms) {
     const txt = await page.evaluate(() => document.body.innerText);
-    if (txt.includes('капча')) throw new Error('Капча! Нужен мобильный прокси.');
+    if (txt.includes('капча')) throw new Error('Капча! Нужен чистый мобильный прокси.');
     throw new Error('Не удалось дойти до ввода СМС.');
   }
 }
@@ -100,14 +115,24 @@ async function executeHaggle(url, arg, uid) {
   let browser;
   try {
     const args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'];
-    if (process.env.PROXY_SERVER) args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
+    const isLocal = !process.env.PROXY_SERVER;
+
+    if (!isLocal) args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
+    
     browser = await puppeteer.launch({ headless: true, args });
     const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    
+    // АВТОРИЗАЦИЯ ПРОКСИ ДЛЯ ТОРГА
+    if (!isLocal && process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
+      await page.authenticate({ username: process.env.PROXY_USERNAME, password: process.env.PROXY_PASSWORD });
+    }
+
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     await loadSession(page, uid);
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 45000 }); 
     await humanScroll(page);
     await delay(2000); 
+    
     const btn = 'button[data-marker="messenger-button/button"]'; 
     if (await page.$(btn)) {
       await page.click(btn);
@@ -126,7 +151,7 @@ async function executeHaggle(url, arg, uid) {
   finally { if (browser) await browser.close(); }
 }
 
-const openai = new OpenAI({ baseURL: 'https://deepseek.com', apiKey: process.env.DEEPSEEK_API_KEY }); 
+const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: process.env.DEEPSEEK_API_KEY }); 
 const MY_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!MY_BOT_TOKEN) { process.exit(1); }
 
@@ -219,15 +244,3 @@ bot.on('text', async (ctx) => {
 });
 
 app.post(TG_PATH, (req, res) => { bot.handleUpdate(req.body, res); });
-app.get('/', (req, res) => { res.send('🚀 Сервер активен'); });
-
-app.listen(PORT, async () => {
-  console.log(`📡 Порт: ${PORT}`);
-  try {
-    await bot.telegram.setWebhook(`${APP_URL}${TG_PATH}`);
-    console.log(`[Telegram] Вебхук зарегистрирован!`);
-  } catch (e) { console.error(e.message); }
-});
-
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
