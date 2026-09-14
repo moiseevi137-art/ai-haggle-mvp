@@ -1,6 +1,6 @@
 require('dotenv').config();
-const { Telegraf } = require('telegraf');
 const express = require('express');
+const { Telegraf } = require('telegraf');
 const Bottleneck = require('bottleneck');
 const OpenAI = require('openai'); 
 const puppeteer = require('puppeteer-extra');
@@ -8,9 +8,16 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
 const { humanType, humanScroll, delay } = require('./humanEmulation'); 
 
+// 1. ИНИЦИАЛИЗАЦИЯ EXPRESS И МГНОВЕННЫЙ ЗАПУСК ПОРТА ДЛЯ RENDER
 const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 3000; 
+
+app.get('/', (req, res) => { res.send('🚀 Сервер активен'); });
+
+app.listen(PORT, () => {
+  console.log(`📡 Порт: ${PORT}. Сервер успешно поднят и слушает запросы Render.`);
+});
 
 console.log('🚀 Режим MVP (В памяти Render)!');
 const storage = new Map();
@@ -153,7 +160,11 @@ async function executeHaggle(url, arg, uid) {
 
 const openai = new OpenAI({ baseURL: 'https://api.deepseek.com', apiKey: process.env.DEEPSEEK_API_KEY }); 
 const MY_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-if (!MY_BOT_TOKEN) { process.exit(1); }
+
+if (!MY_BOT_TOKEN) { 
+  console.error('❌ КРИТИЧЕСКАЯ ОШИБКА: TELEGRAM_BOT_TOKEN отсутствует в настройках!');
+  process.exit(1); 
+}
 
 const bot = new Telegraf(MY_BOT_TOKEN);
 const TG_PATH = `/webhook/${MY_BOT_TOKEN}`;
@@ -238,9 +249,3 @@ bot.on('text', async (ctx) => {
       
       await ctx.reply(`🛡️ Запускаю отправку торга в чат Авито...`);
       const res = await executeHaggle(text, arg, uid);
-      await ctx.reply(res.success ? `✅ Сообщение отправлено!` : `❌ Ошибка автоматизации: ${res.error}`);
-    } catch (err) { await ctx.reply('⚠️ Ошибка запроса к ИИ.'); }
-  } else { await ctx.reply('Отправьте валидную ссылку.'); }
-});
-
-app.post(TG_PATH, (req, res) => { bot.handleUpdate(req.body, res); });
