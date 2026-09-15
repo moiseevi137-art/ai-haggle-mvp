@@ -1,38 +1,57 @@
 require('dotenv').config();const express=require('express');const app=express();app.use(express.json());const PORT=process.env.PORT||3000;
-app.get('/',(req,res)=>{res.send('🚀 Сервер активен');});app.listen(PORT,()=>{console.log(`📡 Порт: ${PORT}. Сервер поднят.`);initBot().catch(e=>console.error(e.message));});
+app.get('/',(req,res)=>{res.send('🚀 Сервер активен');});app.listen(PORT,()=>{console.log(`📡 Порт: ${PORT}`);initBot().catch(e=>console.error(e.message));});
 console.log('🚀 Режим MVP!');const storage=new Map(),userStates=new Map(),browsers=new Map();
 const db={collection:(col)=>({doc:(id)=>({set:async(d)=>{const c=storage.get(`${col}/${id}`)||{};storage.set(`${col}/${id}`,{...c,...d});return true;},get:async()=>({exists:storage.has(`${col}/${id}`),data:()=>storage.get(`${col}/${id}`)})}),add:async(d)=>{const f=Math.random().toString(36).substring(7);storage.set(`${col}/${f}`,d);return{id:f};}})};
-async function loadSession(p,uid){try{const d=await db.collection('user_sessions').doc(uid.toString()).get();if(d.exists){const c=d.data().cookies;if(c?.length>0){await p.setCookie(...c);return true;}}return false;}catch(e){return false;}}
+
+async function optimizePage(p){await p.setRequestInterception(true);p.on('request',(req)=>{if(['image','stylesheet','font','media'].includes(req.resourceType())){req.abort();}else{req.continue();}});}
+async function loadSession(p,uid){try{const d=await db.collection('user_sessions').doc(String(uid)).get();if(d.exists){const c=d.data().cookies;if(c?.length>0){await p.setCookie(...c);return true;}}return false;}catch(e){return false;}}
+
 async function startAvitoAuth(uid,phone){const pt=require('puppeteer-extra'),st=require('puppeteer-extra-plugin-stealth');if(pt.plugins?.length===0)pt.use(st());const{humanType,delay}=require('./humanEmulation');
-const args=['--no-sandbox','--disable-setuid-sandbox','--disable-blink-features=AutomationControlled'],isLocal=!process.env.PROXY_SERVER;if(!isLocal)args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
-const b=await pt.launch({headless:true,args}),p=await b.newPage();if(!isLocal&&process.env.PROXY_USERNAME&&process.env.PROXY_PASSWORD){await p.authenticate({username:process.env.PROXY_USERNAME,password:process.env.PROXY_PASSWORD});}
-await p.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');browsers.set(uid,{browser:b,page:p});
-console.log(`🤖 Запрос СМС через прокси для: ${phone}`);await p.goto('https://avito.ru',{waitUntil:'networkidle2',timeout:50000});await delay(3000);
+const args=['--no-sandbox','--disable-setuid-sandbox','--disable-blink-features=AutomationControlled','--disable-dev-shm-usage'],isLocal=!process.env.PROXY_SERVER;if(!isLocal)args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
+const b=await pt.launch({headless:true,args}),p=await b.newPage();await optimizePage(p);if(!isLocal&&process.env.PROXY_USERNAME&&process.env.PROXY_PASSWORD){await p.authenticate({username:process.env.PROXY_USERNAME,password:process.env.PROXY_PASSWORD});}
+await p.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');browsers.set(String(uid),{browser:b,page:p});
+console.log(`🤖 СМС для: ${phone}`);await p.goto('https://avito.ru',{waitUntil:'networkidle2',timeout:50000});await delay(3000);
 const sel='input[type="tel"], input[data-marker="phone-input/input"]';await p.waitForSelector(sel,{timeout:15000});await p.focus(sel);await humanType(p,sel,phone);await delay(1500);
 const btn='button[type="submit"], button[data-marker="login-form/submit"]';await p.click(btn);await delay(4000);
-const smsSel='input[type="number"], input[data-marker="sms-code-input/input"]';const hasSms=await p.$(smsSel).then(el=>!!el);
-if(!hasSms){const t=await p.evaluate(()=>document.body.innerText);if(t.includes('капча'))throw new Error('Капча! Нужен чистый mobile прокси.');throw new Error('Не удалось дойти до ввода СМС.');}}
-async function finishAvitoAuth(uid,code){const{humanType,delay}=require('./humanEmulation');const s=browsers.get(uid);if(!s)throw new Error('Сессия потеряна.');const{browser:b,page:p}=s;
+const smsSel='input[type="number"], input[data-marker="sms-code-input/input"]';if(!await p.$(smsSel)){const t=await p.evaluate(()=>document.body.innerText);if(t.includes('капча'))throw new Error('Капча! Нужен чистый mobile прокси.');throw new Error('Не удалось дойти до ввода СМС.');}}
+
+async function finishAvitoAuth(uid,code){const{humanType,delay}=require('./humanEmulation');const s=browsers.get(String(uid));if(!s)throw new Error('Сессия потеряна.');const{browser:b,page:p}=s;
 try{const smsSel='input[type="number"], input[data-marker="sms-code-input/input"]';await p.focus(smsSel);await humanType(p,smsSel,code);await delay(5000);const ck=await p.cookies();
-const ok=ck.some(c=>c.name.includes('sessid')||c.name.includes('u'));if(ok){await db.collection('user_sessions').doc(uid).set({cookies:ck,updatedAt:new Date()});return true;}else{throw new Error('Код отклонен.');}}finally{await b.close();browsers.delete(uid);}}
-async function executeHaggle(url,arg,uid){const pt=require('puppeteer-extra'),st=require('puppeteer-extra-plugin-stealth');if(pt.plugins?.length===0)pt.use(st());const{humanType,humanScroll,delay}=require('./humanEmulation');
-let b;try{const args=['--no-sandbox','--disable-setuid-sandbox','--disable-blink-features=AutomationControlled'],isLocal=!process.env.PROXY_SERVER;if(!isLocal)args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
-b=await pt.launch({headless:true,args});const p=await b.newPage();if(!isLocal&&process.env.PROXY_USERNAME&&process.env.PROXY_PASSWORD){await p.authenticate({username:process.env.PROXY_USERNAME,password:process.env.PROXY_PASSWORD});}
+const ok=ck.some(c=>c.name.includes('sessid')||c.name.includes('u'));if(ok){await db.collection('user_sessions').doc(String(uid)).set({cookies:ck,updatedAt:new Date()});return true;}else{throw new Error('Код отклонен.');}}finally{await b.close();browsers.delete(String(uid));}}
+
+async function executeHaggle(url,arg,uid){const pt=require('puppeteer-extra'),st=require('puppeteer-extra-plugin-stealth');if(pt.plugins?.length===0)pt.use(st());const{humanType,humanScroll,delay}=require('./humanEmulation');let b;
+try{const args=['--no-sandbox','--disable-setuid-sandbox','--disable-blink-features=AutomationControlled','--disable-dev-shm-usage'],isLocal=!process.env.PROXY_SERVER;if(!isLocal)args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
+b=await pt.launch({headless:true,args});const p=await b.newPage();await optimizePage(p);if(!isLocal&&process.env.PROXY_USERNAME&&process.env.PROXY_PASSWORD){await p.authenticate({username:process.env.PROXY_USERNAME,password:process.env.PROXY_PASSWORD});}
 await p.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');await loadSession(p,uid);await p.goto(url,{waitUntil:'networkidle2',timeout:45000});await humanScroll(p);await delay(2000);
-const btn='button[data-marker="messenger-button/button"]';if(await p.$(btn)){await p.click(btn);await delay(4000);const ck=await p.cookies();await db.collection('user_sessions').doc(uid).set({cookies:ck,updatedAt:new Date()});
+const btn='button[data-marker="messenger-button/button"]';if(await p.$(btn)){await p.click(btn);await delay(4000);const ck=await p.cookies();await db.collection('user_sessions').doc(String(uid)).set({cookies:ck,updatedAt:new Date()});
 const txt='textarea[placeholder*="Напишите"], [data-marker="chat-input"]';if(await p.$(txt)){await humanType(p,txt,arg);await delay(1500);return{success:true};}}return{success:false,error:'Чат не найден'};}catch(e){return{success:false,error:e.message};}finally{if(b)await b.close();}}
+
 async function initBot(){const t=process.env.TELEGRAM_BOT_TOKEN;if(!t){console.error('❌ Нет токена!');return;}
 const{Telegraf}=require('telegraf'),Bottleneck=require('bottleneck'),OpenAI=require('openai');
-const openai=new OpenAI({baseURL:'https://deepseek.com',apiKey:process.env.DEEPSEEK_API_KEY}),bot=new Telegraf(t),TG_PATH=`/webhook/${t}`,APP_URL=process.env.RENDER_EXTERNAL_URL||'https://onrender.com',limiter=new Bottleneck({maxConcurrent:1,minTime:1500});
-bot.start(async(ctx)=>{try{const uid=ctx.from.id.toString();userStates.delete(uid);await limiter.schedule(()=>db.collection('user_logs').doc(uid).set({chatId:ctx.chat.id,lastStart:new Date()}));await ctx.reply('🤖 Модуль готов:', {reply_markup:{inline_keyboard:[[{text:'🔑 Привязать Авито',callback_data:'start_auth'}]]}});}catch(e){console.error(e.message);}});
+const openai=new OpenAI({baseURL:'https://api.deepseek.com',apiKey:process.env.DEEPSEEK_API_KEY});
+const bot=new Telegraf(t),TG_PATH=`/webhook/${t}`,APP_URL=process.env.RENDER_EXTERNAL_URL||'https://onrender.com',limiter=new Bottleneck({maxConcurrent:1,minTime:1500});
+
+bot.start(async(ctx)=>{try{const uid=ctx.from.id.toString();userStates.delete(uid);await limiter.schedule(()=>db.collection('user_logs').doc(uid).set({chatId:ctx.chat.id,lastStart:new Date()}));
+await ctx.reply('🤖 Модуль готов:',{reply_markup:{inline_keyboard:[[{text:'🔑 Привязать Авито',callback_data:'start_auth'}]]}});}catch(e){console.error(e.message);}});
+
 bot.action('start_auth',async(ctx)=>{await ctx.answerCbQuery();const uid=ctx.from.id.toString();userStates.set(uid,{step:'PHONE'});await ctx.reply('📞 Введите номер: 79991112233');});
+
+bot.action(/^send_bid_(.+)$/,async(ctx)=>{await ctx.answerCbQuery();const bidId=ctx.match[1],uid=ctx.from.id.toString();await ctx.reply('🛡️ Запускаю маскировку и отправляю торг на Авито...');
+try{const snap=await db.collection('bids_history').doc(bidId).get();if(!snap.exists)return ctx.reply('❌ Сделка не найдена в кэше.');const data=snap.data();
+const res=await executeHaggle(data.targetUrl,data.argument,uid);await ctx.reply(res.success?`✅ Отправлено продавцу!`:`❌ Не отправлено: ${res.error}`);}catch(err){await ctx.reply(`❌ Ошибка отправки: ${err.message}`);}});
+
 bot.on('text',async(ctx)=>{const text=ctx.message.text.trim(),uid=ctx.from.id.toString(),state=userStates.get(uid);
 if(state?.step==='PHONE'){if(!/^\d{11}$/.test(text))return ctx.reply('❌ Нужно 11 цифр:');await ctx.reply('⏳ Запрашиваю СМС...');try{await startAvitoAuth(uid,text);userStates.set(uid,{step:'SMS'});await ctx.reply('💬 Введите код из СМС:');}catch(err){userStates.delete(uid);if(browsers.has(uid)){await browsers.get(uid).browser.close();browsers.delete(uid);}await ctx.reply(`❌ Ошибка: ${err.message}`);}return;}
 if(state?.step==='SMS'){await ctx.reply('⚙️ Проверяю код...');try{const ok=await finishAvitoAuth(uid,text);if(ok){userStates.delete(uid);await ctx.reply('🎉 Аккаунт успешно привязан!');}}catch(err){userStates.delete(uid);await ctx.reply(`❌ Ошибка: ${err.message}`);}return;}
-if(text.includes('http://')||text.includes('https://')){const check=await db.collection('user_sessions').doc(uid).get();if(!check.exists)return ctx.reply('⚠️ Привяжите Авито.');await ctx.reply('⏳ Анализирую сделку...');
-try{const comp=await openai.chat.completions.create({model:"deepseek-chat",messages:[{role:"system",content:"Верни ответ СТРОГО в формате JSON с полями: {\"estimatedPrice\": число, \"targetPrice\": число, \"argument\": \"текст торга\"}"},{role:"user",content:`Сделай торг для: ${text}`}],response_format:{type:"json_object"}});
-const ai=JSON.parse(comp.choices[0].message.content),est=Number(ai.estimatedPrice)||0,trg=Number(ai.targetPrice)||0,arg=ai.argument,profit=est>trg?(est-trg):0,comm=Math.round(profit*0.3);
-await ctx.reply(`📊 **АНАЛИЗ:**\n💰 Цена: \`${est}\`\n🎯 Торг: \`${trg}\`\n📈 Выгода: \`${profit}\`\nКомиссия: \`${comm}\`\n\n📝 Предложение:\n_"${arg}"_`,{parse_mode:'Markdown'});await db.collection('bids_history').add({uid,targetUrl:text,estimatedPrice:est,targetPrice:trg,commissionAmount:comm,timestamp:new Date()});
-await ctx.reply(`🛡️ Отправляю торг на Авито...`);const res=await executeHaggle(text,arg,uid);await ctx.reply(res.success?`✅ Отправлено!`:`❌ Ошибка: ${res.error}`);}catch(err){await ctx.reply('⚠️ Ошибка ИИ.');}}else{await ctx.reply('Отправьте ссылку.');}});
-app.post(TG_PATH,(req,res)=>{bot.handleUpdate(req.body,res);});try{await bot.telegram.setWebhook(`${APP_URL}${TG_PATH}`);console.log(`[Telegram] Вебхук: ${APP_URL}${TG_PATH}`);}catch(e){console.error(e.message);}
+
+if(text.includes('http://')||text.includes('https://')){const check=await db.collection('user_sessions').doc(uid).get();if(!check.exists)return ctx.reply('⚠️ Привяжите Авито.');await ctx.reply('⏳ Анализирую сделку через ИИ DeepSeek...');
+try{const comp=await openai.chat.completions.create({model:"deepseek-chat",messages:[{role:"system",content:"Верни строго JSON объект с полями estimatedPrice (число), targetPrice (число), argument (строка торга на русском языке)"},{role:"user",content:`Сделай торг для: ${text}`}],response_format:{type:"json_object"}});
+let rawJson=comp.choices[0].message.content;rawJson=rawJson.replace(/```json|```/g,"").trim();const ai=JSON.parse(rawJson);
+const est=Number(ai.estimatedPrice)||0,trg=Number(ai.targetPrice)||0,arg=ai.argument,profit=est>trg?(est-trg):0,comm=Math.round(profit*0.3);
+const bidRef=await db.collection('bids_history').add({uid,targetUrl:text,estimatedPrice:est,targetPrice:trg,argument:arg,commissionAmount:comm,timestamp:new Date()});
+await db.collection('bids_history').doc(bidRef.id).set({uid,targetUrl:text,estimatedPrice:est,targetPrice:trg,argument:arg});
+await ctx.reply(`📊 **АНАЛИЗ СДЕЛКИ:**\n💰 Цена: \`${est}\` ₽\n🎯 Цель торга: \`${trg}\` ₽\n📈 Профит: \`${profit}\` ₽\n💸 Твои 30%: \`${comm}\` ₽\n\n📝 **Аргумент ИИ:**\n_"${arg}"_`,{parse_mode:'Markdown',reply_markup:{inline_keyboard:[[{text:'🚀 Отправить предложение на Авито',callback_data:`send_bid_${bidRef.id}`}]]}});
+}catch(err){await ctx.reply('⚠️ Ошибка ИИ или парсинга.');}}else{await ctx.reply('Отправьте ссылку на товар Авито.');}});
+
+app.post(TG_PATH,(req,res)=>{bot.handleUpdate(req.body,res);});try{await bot.telegram.setWebhook(`${APP_URL}${TG_PATH}`);console.log(`[Telegram] Вебхук активен`);}catch(e){console.error(e.message);}
 process.once('SIGINT',()=>bot.stop('SIGINT'));process.once('SIGTERM',()=>bot.stop('SIGTERM'));}
