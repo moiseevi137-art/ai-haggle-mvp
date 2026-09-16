@@ -4,8 +4,7 @@
   "description": "AI-переговорщик для автоматического торга",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "render-postbuild": "puppeteer browsers install chrome"
+    "start": "node index.js"
   },
   "dependencies": {
     "bottleneck": "^2.19.5",
