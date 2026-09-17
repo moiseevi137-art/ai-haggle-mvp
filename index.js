@@ -56,7 +56,9 @@ async function loadSession(p, uid) {
   } catch (e) {
     return false;
   }
-}async function startAvitoAuth(uid, phone) {
+}
+
+async function startAvitoAuth(uid, phone) {
   const pt = require('puppeteer-extra'), st = require('puppeteer-extra-plugin-stealth');
   if (pt.plugins?.length === 0) pt.use(st());
   const { humanType, delay } = require('./humanEmulation');
@@ -163,7 +165,9 @@ async function executeHaggle(url, arg, uid) {
 
     const btn = 'button[data-marker="messenger-button/button"]';
     if (await p.\$(btn)) {
-      await p.click(btn);
+      awai
+
+t p.click(btn);
       await delay(4000);
       const ck = await p.cookies();
       await db.collection('user_sessions').doc(String(uid)).set({ cookies: ck, updatedAt: new Date() });
@@ -181,7 +185,9 @@ async function executeHaggle(url, arg, uid) {
   } finally {
     if (b) await b.close();
   }
-}async function initBot() {
+}
+
+async function initBot() {
   const t = process.env.TELEGRAM_BOT_TOKEN;
   if (!t) {
     console.error('❌ Отсутствует токен Telegram бота!');
@@ -241,7 +247,9 @@ async function executeHaggle(url, arg, uid) {
       const snap = await db.collection('bids_history').doc(bidId).get();
       if (!snap.exists) return ctx.reply('❌ Сделка не найдена в кэше.');
       const data = snap.data();
-      const res = await executeHaggle(data.targetUrl, data.argument, uid);
+      const res = await executeHaggle(data.t
+
+argetUrl, data.argument, uid);
       await ctx.reply(res.success ? ✅ Успешно отправлено продавцу! : ❌ Не отправлено: ${res.error});
     } catch (err) { await ctx.reply(❌ Ошибка отправки: ${err.message}); }
   });
