@@ -13,27 +13,32 @@ async function humanType(page, selector, text) {
     await page.waitForSelector(selector, { timeout: 5000 });
     await page.focus(selector);
     
+    // Проверяем, что вводим: если текст длинный — это чат (включаем опечатки).
+    // Если короткий (телефон/СМС) — опечатки отключаем для безопасности авторизации.
+    const allowTypos = text.length > 15;
+    
     for (const char of text) {
         // Рандомная задержка нажатия и удержания клавиши (от 60 до 150 мс)
         const charDelay = Math.floor(Math.random() * (150 - 60 + 1)) + 60;
         
-        // Передаем delay прямо внутрь Puppeteer, чтобы эмулировать keydown/keyup
-        await page.type(selector, char, { delay: charDelay });
+        // Печатаем символ без встроенного delay, так как контролируем паузу вручную ниже
+        await page.type(selector, char);
+        await delay(charDelay);
         
         // Симуляция "задумчивости" на пробелах (человек разделяет мысли между словами)
         if (char === ' ' && Math.random() < 0.40) {
             await delay(Math.floor(Math.random() * (400 - 150 + 1)) + 150);
         }
 
-        // 2% шанс сделать опечатку и сразу её исправить (имитация живого человека)
-        if (Math.random() < 0.02 && char !== ' ') {
+        // Шанс сделать опечатку и сразу её исправить (только для длинных текстов в чате)
+        if (allowTypos && Math.random() < 0.03 && char !== ' ') {
             const wrongChars = 'фывапролджэйцукенгшщзхъ';
             const randomWrongChar = wrongChars[Math.floor(Math.random() * wrongChars.length)];
             
-            await page.type(selector, randomWrongChar, { delay: 50 });
-            await delay(Math.floor(Math.random() * 200) + 150);
-            await page.keyboard.press('Backspace', { delay: 50 });
-            await delay(Math.floor(Math.random() * 200) + 100);
+            await page.type(selector, randomWrongChar);
+            await delay(Math.floor(Math.random() * 150) + 100);
+            await page.keyboard.press('Backspace');
+            await delay(Math.floor(Math.random() * 150) + 100);
         }
         
         // 3% шанс сделать глубокую паузу посреди текста
