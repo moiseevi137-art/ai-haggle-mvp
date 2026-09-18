@@ -259,7 +259,7 @@ async function initBot() {
     await ctx.reply('📖 **РЕГЛАМЕНТ РАБОТЫ С СИСТЕМОЙ AI HAGGLE**\n─────────────────────────\n1️⃣ **Синхронизация:** Нажми кнопку *🔑 ПОДКЛЮЧИТЬ АККАУНТ АВИТО*, введи номер телефона и подтверди сессию СМС-кодом.\n\n2️⃣ **Передача данных:** Скопируй веб-ссылку на интересующий товар из приложения Авито и отправь её прямо в этот чат.\n\n3️⃣ **Нейро-скоринг:** ИИ проанализирует карточку товара, выявит уязвимости в описании и сформирует железобетонную стратегию сброса цены.\n\n4️⃣ **Экспансия в чат:** Нажми кнопку *Отправить*, и наш замаскированный агент автоматически проведет торг с продавцом без твоего личного участия.', { parse_mode: 'Markdown' });
   });
 
-  bot.action(/^send_bid_(.+)\$/, async (ctx) => {
+  bot.action(/^send_bid_(.+)$/, async (ctx) => {
     await ctx.answerCbQuery();
     const bidId = ctx.match[1];
     const uid = ctx.from.id.toString();
@@ -280,8 +280,8 @@ async function initBot() {
     const uid = ctx.from.id.toString();
     const state = userStates.get(uid);
 
-    if (state?.step === 'PHONE') {
-      if (!/^\d{11}\$/.test(text)) return ctx.reply('❌ Некорректный формат. Нужно ровно 11 цифр:');
+        if (state?.step === 'PHONE') {
+      if (!/^\d{11}$/.test(text)) return ctx.reply('❌ Некорректный формат. Нужно ровно 11 цифр:');
       await ctx.reply('⏳ Запускаю безопасную сессию и запрашиваю СМС...');
       try {
         await startAvitoAuth(uid, text);
@@ -350,7 +350,7 @@ async function initBot() {
         
         await ctx.reply(`📋 **ОТЧЁТ ОБ АНАЛИЗЕ СДЕЛКИ**\n──────────────────────\n💰 **Исходная цена:** \`\${est}\` ₽\n🎯 **Целевая цена торга:** \`\${trg}\` ₽\n📈 **Прогнозируемая выгода:** \`\${profit}\` ₽\n💸 **Сервисный сбор (30%):** \`\${comm}\` ₽\n──────────────────────\n\n🤖 **Стратегия торга от DeepSeek:**\n_"${arg}"_\n\n👇 *Готовы запустить робота в чат Авито?*`, {
           parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: [[{ text: '🚀 Отправить предложение продавцу', callback_data: `send_bid_${bidRef.id}` }]] }
+          reply_markup: { inline_keyboard: [[{ text: '🚀 Отправить предложение продавцу', callback_data: `send_bid_\${bidRef.id}` }]] }
         });
       } catch (err) {
         await ctx.reply('⚠️ Ошибка нейро-скоринга или парсинга ответа.');
@@ -374,3 +374,4 @@ async function initBot() {
   process.once('SIGINT', () => bot.stop('SIGINT'));
   process.once('SIGTERM', () => bot.stop('SIGTERM'));
 }
+
