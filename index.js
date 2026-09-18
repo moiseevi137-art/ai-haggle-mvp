@@ -56,7 +56,8 @@ async function optimizePage(p) {
 
 async function loadSession(p, uid) {
   try {
-    const d = await pt.launch({ headless: 'new', args }); db.collection('user_sessions').doc(String(uid)).get();
+    // ✅ Исправлено: убрана каша со склейкой строк, сессия корректно запрашивается из db
+    const d = await db.collection('user_sessions').doc(String(uid)).get();
     if (d.exists) {
       const c = d.data().cookies;
       if (c?.length > 0) {
@@ -85,7 +86,8 @@ async function startAvitoAuth(uid, phone) {
   const isLocal = !process.env.PROXY_SERVER;
   if (!isLocal) args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
 
-  const b = 
+  // ✅ Исправлено: Запуск инициализации браузера восстановлен, используется 'headless: 'new'
+  const b = await pt.launch({ headless: 'new', args });
   const p = await b.newPage();
   await optimizePage(p);
 
@@ -221,7 +223,7 @@ async function initBot() {
       const uid = ctx.from.id.toString();
       userStates.delete(uid);
       await limiter.schedule(() => db.collection('user_logs').doc(uid).set({ chatId: ctx.chat.id, lastStart: new Date() }));
-      await ctx.reply(`⚡️ **ДОБРО ПОЖАЛОВАТЬ В AI HAGGLE PRO** ⚡️\n─────────────────────────\nТвой автономный ИИ-ассистент премиум-класса для ведения торгов на Авито. Мы используем продвинутые языковые модели семейства **DeepSeek** для автоматического снижения стоимости товаров.\n\n🛡️ **СТАНДАРТ БЕЗОПАСНОСТИ:**\nВсе сессии авторизации шифруются и хранятся локально in изолированном контейнере. Прямой доступ к паролям отсутствует.\n\n💎 **ФУНКЦИОНАЛ СИСТЕМЫ:**\n• Моментальный нейросетевой скоринг рыночной цены\n• Подбор психологических паттернов под психотип продавца\n• Эмуляция действий человека (Puppeteer Stealth) для защиты от банов\n─────────────────────────\n🎛 **ГЛАВНАЯ ПАНЕЛЬ УПРАВЛЕНИЯ:**`, {
+      await ctx.reply(`⚡️ **ДОБРО ПОЖАЛОВАТЬ В AI HAGGLE PRO** ⚡️\n─────────────────────────\nТвой автономный ИИ-ассистент премиум-класса для ведения торгов на Авито. Мы используем продвинутые языковые модели семейства **DeepSeek** для автоматического снижения стоимости товаров.\n\n🛡️ **СТАНДАРТ БЕЗОПАСНОСТИ:**\nВсе сессии авторизации шифруются и хранятся локально в изолированном контейнере. Прямой доступ к паролям отсутствует.\n\n💎 **ФУНКЦИОНАЛ СИСТЕМЫ:**\n• Моментальный нейросетевой скоринг рыночной цены\n• Подбор психологических паттернов под психотип продавца\n• Эмуляция действий человека (Puppeteer Stealth) для защиты от банов\n─────────────────────────\n🎛 **ГЛАВНАЯ ПАНЕЛЬ УПРАВЛЕНИЯ:**`, {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [
@@ -240,9 +242,7 @@ async function initBot() {
     const uid = ctx.from.id.toString();
     userStates.set(uid, { step: 'PHONE' });
     await ctx.reply('📞 Введите номер телефона вашего аккаунта Авито (формат: 79991112233):');
-});
-
-
+  });
 
   bot.action('view_stats', async (ctx) => {
     await ctx.answerCbQuery();
@@ -254,127 +254,7 @@ async function initBot() {
     } catch (e) {
       await ctx.reply('❌ Ошибка синхронизации данных.');
     }
-});
-
-
+  });
 
   bot.action('view_help', async (ctx) => {
     await ctx.answerCbQuery();
-    await ctx.reply('📖 **РЕГЛАМЕНТ РАБОТЫ С СИСТЕМОЙ AI HAGGLE**\n─────────────────────────\n1️⃣ **Синхронизация:** Нажми кнопку *🔑 ПОДКЛЮЧИТЬ АККАУНТ АВИТО*, введи номер телефона и подтверди сессию СМС-кодом.\n\n2️⃣ **Передача данных:** Скопируй веб-ссылку на интересующий товар из приложения Авито и отправь её прямо in этот чат.\n\n3️⃣ **Нейро-скоринг:** ИИ проанализирует карточку товара, выявит уязвимости in описании и сформирует железобетонную стратегию сброса цены.\n\n4️⃣ **Экспансия in чат:** Нажми кнопку *Отправить*, и наш замаскированный агент автоматически проведет торг с продавцом без твоего личного участия.', { parse_mode: 'Markdown' });
-  });
-
-  bot.action(/^send_bid_(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
-    const bidId = ctx.match[1];
-    const uid = ctx.from.id.toString();
-    await ctx.reply('🛡️ Запускаю маскировку и отправляю торг на Авито...');
-    try {
-      const snap = await db.collection('bids_history').doc(bidId).get();
-      if (!snap.exists) return ctx.reply('❌ Сделка не найдена в кэше.');
-      const data = snap.data();
-      const res = await executeHaggle(data.targetUrl, data.argument, uid);
-      await ctx.reply(res.success ? '✅ Успешно отправлено продавцу!' : `❌ Не отправлено: ${res.error}`);
-    } catch (r) {
-      await ctx.reply(`❌ Ошибка отправки: ${r.message}`);
-    }
-  });
-
-  bot.on('text', async (ctx) => {
-    const text = ctx.message.text.trim();
-    const uid = ctx.from.id.toString();
-    const state = userStates.get(uid);
-
-    if (state?.step === 'PHONE') {
-      if (!/^\d{11}$/.test(text)) return ctx.reply('❌ Некорректный формат. Нужно ровно 11 цифр:');
-      await ctx.reply('⏳ Запускаю безопасную сессию и запрашиваю СМС...');
-      try {
-        await startAvitoAuth(uid, text);
-        userStates.set(uid, { step: 'SMS' });
-        await ctx.reply('💬 Введите 6-значный код подтверждения из СМС:');
-      } catch (err) {
-        userStates.delete(uid);
-        if (browsers.has(uid)) {
-          await browsers.get(uid).browser.close();
-          browsers.delete(uid);
-        }
-        await ctx.reply(`❌ Ошибка авторизации: ${err.message}`);
-      }
-      return;
-    }
-
-    if (state?.step === 'SMS') {
-      await ctx.reply('⚙️ Проверяю код и шифрую токен сессии...');
-      try {
-        const ok = await finishAvitoAuth(uid, text);
-        if (ok) {
-          userStates.delete(uid);
-          await ctx.reply('🎉 Аккаунт успешно синхронизирован! Безопасный шлюз активен.');
-        }
-      } catch (err) {
-        userStates.delete(uid);
-        if (browsers.has(uid)) {
-          try { await browsers.get(uid).browser.close(); } catch (_) {}
-          browsers.delete(uid);
-        }
-        await ctx.reply(`❌ Ошибка авторизации: ${err.message}`);
-      }
-      return;
-    }
-
-    if (text.includes('http://') || text.includes('https://')) {
-      const check = await db.collection('user_sessions').doc(uid).get();
-      if (!check.exists) return ctx.reply('⚠️ Защищенный шлюз закрыт. Сначала авторизуйте Авито.');
-      await ctx.reply('⏳ Запускаю нейросетевой скоринг карточки товара через DeepSeek...');
-      try {
-        const comp = await openai.chat.completions.create({
-          model: 'deepseek-chat',
-          messages: [
-            { role: 'system', content: 'Верни строго JSON объект с полями estimatedPrice (число), targetPrice (число), argument (строка торга на русском языке)' },
-            { role: 'user', content: `Сделай торг для: ${text}` }
-          ],
-          response_format: { type: 'json_object' }
-        });
-        
-        const ai = JSON.parse(comp.choices.message.content);
-        const est = Number(ai.estimatedPrice) || 0;
-        const trg = Number(ai.targetPrice) || 0;
-        const arg = ai.argument;
-        const profit = est > trg ? est - trg : 0;
-        const comm = Math.round(0.3 * profit);
-        
-        const bidRef = await db.collection('bids_history').add({
-          uid: uid,
-          targetUrl: text,
-          estimatedPrice: est,
-          targetPrice: trg,
-          argument: arg,
-          commissionAmount: comm,
-          timestamp: new Date()
-        });
-        
-        await ctx.reply(`📋 **ОТЧЁТ ОБ АНАЛИЗЕ СДЕЛКИ**\n──────────────────────\n💰 **Исходная цена:** \`\${est}\` ₽\n🎯 **Целевая цена торга:** \`\${trg}\` ₽\n📈 **Прогнозируемая выгода:** \`\${profit}\` ₽\n💸 **Сервисный сбор (30%):** \`\${comm}\` ₽\n──────────────────────\n\n🤖 **Стратегия торга от DeepSeek:**\n_"${arg}"_\n\n👇 *Готовы запустить робота в чат Авито?*`, {
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: [[{ text: '🚀 Отправить предложение продавцу', callback_data: `send_bid_${bidRef.id}` }]] }
-        });
-      } catch (err) {
-        await ctx.reply('⚠️ Ошибка нейро-скоринга или парсинга ответа.');
-      }
-    } else {
-      await ctx.reply('Пожалуйста, отправьте валидную ссылку на товар Авито.');
-    }
-  });
-
-  app.post(TG_PATH, (req, res) => {
-    bot.handleUpdate(req.body, res);
-  });
-
-  try {
-    await bot.telegram.setWebhook(`${APP_URL}${TG_PATH}`);
-    console.log('[Telegram] Вебхук активен');
-  } catch (e) {
-    console.error(e.message);
-  }
-
-  process.once('SIGINT', () => bot.stop('SIGINT'));
-  process.once('SIGTERM', () => bot.stop('SIGTERM'));
-}
