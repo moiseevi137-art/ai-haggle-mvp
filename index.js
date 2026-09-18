@@ -242,6 +242,7 @@ async function initBot() {
     await ctx.reply('📞 Введите номер телефона вашего аккаунта Авито (формат: 79991112233):');
   });
 
+
   bot.action('view_stats', async (ctx) => {
     await ctx.answerCbQuery();
     const uid = ctx.from.id.toString();
@@ -253,6 +254,7 @@ async function initBot() {
       await ctx.reply('❌ Ошибка синхронизации данных.');
     }
   });
+
 
   bot.action('view_help', async (ctx) => {
     await ctx.answerCbQuery();
