@@ -56,7 +56,7 @@ async function optimizePage(p) {
 
 async function loadSession(p, uid) {
   try {
-    const d = await db.collection('user_sessions').doc(String(uid)).get();
+    const d = await pt.launch({ headless: 'new', args }); db.collection('user_sessions').doc(String(uid)).get();
     if (d.exists) {
       const c = d.data().cookies;
       if (c?.length > 0) {
@@ -85,7 +85,7 @@ async function startAvitoAuth(uid, phone) {
   const isLocal = !process.env.PROXY_SERVER;
   if (!isLocal) args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
 
-  const b = await pt.launch({ headless: 'new', executablePath: '/usr/bin/google-chrome', args });
+  const b = 
   const p = await b.newPage();
   await optimizePage(p);
 
@@ -159,7 +159,7 @@ async function executeHaggle(url, arg, uid) {
     const isLocal = !process.env.PROXY_SERVER;
     if (!isLocal) args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
 
-    b = await pt.launch({ headless: 'new', executablePath: '/usr/bin/google-chrome', args });
+    b = await pt.launch({ headless: 'new', args });
     const p = await b.newPage();
     await optimizePage(p);
 
