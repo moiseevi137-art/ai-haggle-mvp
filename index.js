@@ -1,4 +1,4 @@
-// index.js
+
 require('dotenv').config();
 const express = require('express');
 const app = express();
@@ -56,7 +56,6 @@ async function optimizePage(p) {
 
 async function loadSession(p, uid) {
   try {
-    // ✅ Исправлено: убрана каша со склейкой строк, сессия корректно запрашивается из db
     const d = await db.collection('user_sessions').doc(String(uid)).get();
     if (d.exists) {
       const c = d.data().cookies;
@@ -86,7 +85,6 @@ async function startAvitoAuth(uid, phone) {
   const isLocal = !process.env.PROXY_SERVER;
   if (!isLocal) args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
 
-  // ✅ Исправлено: Запуск инициализации браузера восстановлен, используется 'headless: 'new'
   const b = await pt.launch({ headless: 'new', args });
   const p = await b.newPage();
   await optimizePage(p);
@@ -103,7 +101,7 @@ async function startAvitoAuth(uid, phone) {
   await delay(3000);
 
   const sel = 'input[type="tel"], input[data-marker="phone-input/input"]';
-  if (!await p.$(sel)) throw new Error('Поле ввода телефона не найдено.');
+  if (!await p.\$(sel)) throw new Error('Поле ввода телефона не найдено.');
   
   await p.focus(sel);
   await humanType(p, sel, phone);
@@ -114,7 +112,7 @@ async function startAvitoAuth(uid, phone) {
   await delay(4000);
 
   const smsSel = 'input[type="number"], input[data-marker="sms-code-input/input"]';
-  if (!await p.$(smsSel)) {
+  if (!await p.\$(smsSel)) {
     const t = await p.evaluate(() => document.body.innerText);
     if (t.includes('капча')) throw new Error('Капча! Требуется мобильный прокси.');
     throw new Error('Не удалось дойти до ввода СМС.');
@@ -176,14 +174,14 @@ async function executeHaggle(url, arg, uid) {
     await delay(2000);
 
     const btn = 'button[data-marker="messenger-button/button"]';
-    if (await p.$(btn)) {
+    if (await p.\$(btn)) {
       await p.click(btn);
       await delay(4000);
       const m = await p.cookies();
       await db.collection('user_sessions').doc(String(uid)).set({ cookies: m, updatedAt: new Date() });
       
       const txt = 'textarea[placeholder*="Напишите"], [data-marker="chat-input"]';
-      if (await p.$(txt)) {
+      if (await p.\$(txt)) {
         await humanType(p, txt, arg);
         await delay(1500);
         return { success: true };
@@ -196,7 +194,7 @@ async function executeHaggle(url, arg, uid) {
     if (b) await b.close();
   }
 }
-
+// 
 async function initBot() {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
@@ -209,7 +207,7 @@ async function initBot() {
   const OpenAI = require('openai');
 
   const openai = new OpenAI({
-    baseURL: 'https://deepseek.com',
+    baseURL: 'https://deepseek.com', // Обновленный официальный эндпоинт DeepSeek
     apiKey: process.env.DEEPSEEK_API_KEY
   });
 
@@ -258,3 +256,121 @@ async function initBot() {
 
   bot.action('view_help', async (ctx) => {
     await ctx.answerCbQuery();
+    await ctx.reply('📖 **РЕГЛАМЕНТ РАБОТЫ С СИСТЕМОЙ AI HAGGLE**\n─────────────────────────\n1️⃣ **Синхронизация:** Нажми кнопку *🔑 ПОДКЛЮЧИТЬ АККАУНТ АВИТО*, введи номер телефона и подтверди сессию СМС-кодом.\n\n2️⃣ **Передача данных:** Скопируй веб-ссылку на интересующий товар из приложения Авито и отправь её прямо в этот чат.\n\n3️⃣ **Нейро-скоринг:** ИИ проанализирует карточку товара, выявит уязвимости в описании и сформирует железобетонную стратегию сброса цены.\n\n4️⃣ **Экспансия в чат:** Нажми кнопку *Отправить*, и наш замаскированный агент автоматически проведет торг с продавцом без твоего личного участия.', { parse_mode: 'Markdown' });
+  });
+
+  bot.action(/^send_bid_(.+)\$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const bidId = ctx.match[1];
+    const uid = ctx.from.id.toString();
+    await ctx.reply('🛡️ Запускаю маскировку и отправляю торг на Авито...');
+    try {
+      const snap = await db.collection('bids_history').doc(bidId).get();
+      if (!snap.exists) return ctx.reply('❌ Сделка не найдена в кэше.');
+      const data = snap.data();
+      const res = await executeHaggle(data.targetUrl, data.argument, uid);
+      await ctx.reply(res.success ? '✅ Успешно отправлено продавцу!' : `❌ Не отправлено: ${res.error}`);
+    } catch (r) {
+      await ctx.reply(`❌ Ошибка отправки: ${r.message}`);
+    }
+  });
+
+  bot.on('text', async (ctx) => {
+    const text = ctx.message.text.trim();
+    const uid = ctx.from.id.toString();
+    const state = userStates.get(uid);
+
+    if (state?.step === 'PHONE') {
+      if (!/^\d{11}\$/.test(text)) return ctx.reply('❌ Некорректный формат. Нужно ровно 11 цифр:');
+      await ctx.reply('⏳ Запускаю безопасную сессию и запрашиваю СМС...');
+      try {
+        await startAvitoAuth(uid, text);
+        userStates.set(uid, { step: 'SMS' });
+        await ctx.reply('💬 Введите 6-значный код подтверждения из СМС:');
+      } catch (err) {
+        userStates.delete(uid);
+        if (browsers.has(uid)) {
+          await browsers.get(uid).browser.close();
+          browsers.delete(uid);
+        }
+        await ctx.reply(`❌ Ошибка авторизации: ${err.message}`);
+      }
+      return;
+    }
+
+    if (state?.step === 'SMS') {
+      await ctx.reply('⚙️ Проверяю код и шифрую токен сессии...');
+      try {
+        const ok = await finishAvitoAuth(uid, text);
+        if (ok) {
+          userStates.delete(uid);
+          await ctx.reply('🎉 Аккаунт успешно синхронизирован! Безопасный шлюз активен.');
+        }
+      } catch (err) {
+        userStates.delete(uid);
+        if (browsers.has(uid)) {
+          try { await browsers.get(uid).browser.close(); } catch (_) {}
+          browsers.delete(uid);
+        }
+        await ctx.reply(`❌ Ошибка авторизации: ${err.message}`);
+      }
+      return;
+    }
+
+    if (text.includes('http://') || text.includes('https://')) {
+      const check = await db.collection('user_sessions').doc(uid).get();
+      if (!check.exists) return ctx.reply('⚠️ Защищенный шлюз закрыт. Сначала авторизуйте Авито.');
+      await ctx.reply('⏳ Запускаю нейросетевой скоринг карточки товара через DeepSeek...');
+      try {
+        const comp = await openai.chat.completions.create({
+          model: 'deepseek-chat',
+          messages: [
+            { role: 'system', content: 'Верни строго JSON объект с полями estimatedPrice (число), targetPrice (число), argument (строка торга на русском языке)' },
+            { role: 'user', content: `Сделай торг для: ${text}` }
+          ],
+          response_format: { type: 'json_object' }
+        });
+        
+        const ai = JSON.parse(comp.choices.message.content);
+        const est = Number(ai.estimatedPrice) || 0;
+        const trg = Number(ai.targetPrice) || 0;
+        const arg = ai.argument;
+        const profit = est > trg ? est - trg : 0;
+        const comm = Math.round(0.3 * profit);
+        
+        const bidRef = await db.collection('bids_history').add({
+          uid: uid,
+          targetUrl: text,
+          estimatedPrice: est,
+          targetPrice: trg,
+          argument: arg,
+          commissionAmount: comm,
+          timestamp: new Date()
+        });
+        
+        await ctx.reply(`📋 **ОТЧЁТ ОБ АНАЛИЗЕ СДЕЛКИ**\n──────────────────────\n💰 **Исходная цена:** \`\${est}\` ₽\n🎯 **Целевая цена торга:** \`\${trg}\` ₽\n📈 **Прогнозируемая выгода:** \`\${profit}\` ₽\n💸 **Сервисный сбор (30%):** \`\${comm}\` ₽\n──────────────────────\n\n🤖 **Стратегия торга от DeepSeek:**\n_"${arg}"_\n\n👇 *Готовы запустить робота в чат Авито?*`, {
+          parse_mode: 'Markdown',
+          reply_markup: { inline_keyboard: [[{ text: '🚀 Отправить предложение продавцу', callback_data: `send_bid_${bidRef.id}` }]] }
+        });
+      } catch (err) {
+        await ctx.reply('⚠️ Ошибка нейро-скоринга или парсинга ответа.');
+      }
+    } else {
+      await ctx.reply('Пожалуйста, отправьте валидную ссылку на товар Авито.');
+    }
+  });
+
+  app.post(TG_PATH, (req, res) => {
+    bot.handleUpdate(req.body, res);
+  });
+
+  try {
+    await bot.telegram.setWebhook(`${APP_URL}${TG_PATH}`);
+    console.log('[Telegram] Вебхук активен');
+  } catch (e) {
+    console.error(e.message);
+  }
+
+  process.once('SIGINT', () => bot.stop('SIGINT'));
+  process.once('SIGTERM', () => bot.stop('SIGTERM'));
+}
