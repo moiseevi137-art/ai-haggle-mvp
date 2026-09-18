@@ -240,7 +240,8 @@ async function initBot() {
     const uid = ctx.from.id.toString();
     userStates.set(uid, { step: 'PHONE' });
     await ctx.reply('📞 Введите номер телефона вашего аккаунта Авито (формат: 79991112233):');
-  });
+});
+
 
 
   bot.action('view_stats', async (ctx) => {
@@ -249,11 +250,12 @@ async function initBot() {
     try {
       const check = await db.collection('user_sessions').doc(uid).get();
       const status = check.exists ? '🟢 БЕЗОПАСНОЕ СОЕДИНЕНИЕ АКТИВНО' : '🔴 ТРЕБУЕТСЯ АВТОРИЗАЦИЯ';
-      await ctx.reply(`📊 **ЛИЧНЫЙ ФИНАНСОВЫЙ КАБИНЕТ**\n─────────────────────────\n🔐 **Статус шлюза:** \`${status}\`\n\n💰 **Сэкономлено бюджета:** \`0\` ₽\n🎯 **Успешно закрытые сделки:** \`0\` сессий\n⚡️ **Эффективность торга ИИ:** \`0%\` (средняя)\n─────────────────────────\n📡 *Система мониторинга чатов работает in штатном режиме.*`, { parse_mode: 'Markdown' });
-    } catch (r) {
+      await ctx.reply(`📊 **ЛИЧНЫЙ ФИНАНСОВЫЙ КАБИНЕТ**\n─────────────────────────\n🔐 **Статус шлюза:** \`\${status}\`\n\n💰 **Сэкономлено бюджета:** \`0\` ₽\n🎯 **Успешно закрытые сделки:** \`0\` сессий\n⚡️ **Эффективность торга ИИ:** \`0%\` (средняя)\n─────────────────────────\n📡 *Система мониторинга чатов работает в штатном режиме.*`, { parse_mode: 'Markdown' });
+    } catch (e) {
       await ctx.reply('❌ Ошибка синхронизации данных.');
     }
-  });
+});
+
 
 
   bot.action('view_help', async (ctx) => {
@@ -283,7 +285,7 @@ async function initBot() {
     const state = userStates.get(uid);
 
     if (state?.step === 'PHONE') {
-      if (!/^\d{11}\$/.test(text)) return ctx.reply('❌ Некорректный формат. Нужно ровно 11 цифр:');
+      if (!/^\d{11}$/.test(text)) return ctx.reply('❌ Некорректный формат. Нужно ровно 11 цифр:');
       await ctx.reply('⏳ Запускаю безопасную сессию и запрашиваю СМС...');
       try {
         await startAvitoAuth(uid, text);
