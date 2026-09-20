@@ -167,11 +167,10 @@ async function initBot() {
   });
 
   const bot = new Telegraf(token);
-  const TG_PATH = `/webhook/${token}`;
-  const BASE_URL = (process.env.RENDER_EXTERNAL_URL || 'https://ai-haggle-mvp-service.onrender.com').replace(/\/$/, '');
+  const TG_PATH = '/webhook/' + token;
+  const BASE_URL = process.env.RENDER_EXTERNAL_URL ? process.env.RENDER_EXTERNAL_URL.trim() : 'https://ai-haggle-mvp-service.onrender.com';
   const limiter = new Bottleneck({ maxConcurrent: 1, minTime: 1500 });
-  const webHookUrl = `${BASE_URL}${TG_PATH}`;
-
+  const webHookUrl = BASE_URL + TG_PATH;
   app.use(bot.webhookCallback(TG_PATH));
 
   bot.start(async (ctx) => {
