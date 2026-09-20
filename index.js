@@ -1,4 +1,49 @@
-// --- НАЧАЛО ЧАСТИ 1 ИЗ 3 ---
+require('dotenv').config();
+const express = require('express');
+const app = express();
+
+app.use(express.json());
+
+const PORT = process.env.PORT || 10000;
+
+app.get('/', (req, res) => {
+  res.send('🚀 AI Haggle Pro Active');
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log('📡 Сервер успешно запущен на порту: ' + PORT);
+  setTimeout(() => {
+    initBot();
+  }, 1000);
+});
+
+console.log('⚡️ Режим AI HAGGLE PRO!');
+
+const storage = new Map();
+const userStates = new Map();
+const browsers = new Map();
+
+const db = {
+  collection: (col) => ({
+    doc: (id) => ({
+      set: async (d) => {
+        const c = storage.get(col + '/' + id) || {};
+        storage.set(col + '/' + id, { ...c, ...d });
+        return true;
+      },
+      get: async () => ({
+        exists: storage.has(col + '/' + id),
+        data: () => storage.get(col + '/' + id)
+      })
+    }),
+    add: async (d) => {
+      const f = Math.random().toString(36).substring(7);
+      storage.set(col + '/' + f, d);
+      return { id: f };
+    }
+  })
+};
+
 
 // ШЛЮЗ АВТОРИЗАЦИИ: Шаг №2 — Верификация СМС-кода и закрепление сессии
 async function finishAvitoAuth(uid, code) {
