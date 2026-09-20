@@ -297,4 +297,7 @@ async function initBot() {
 
   process.once('SIGINT', () => bot.stop('SIGINT'));
   process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+  // Держим процесс Node.js постоянно активным на Render для вебхуков
+  setInterval(() => {}, 1 << 30);
 }
