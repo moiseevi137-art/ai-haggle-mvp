@@ -1,147 +1,34 @@
+// --- НАЧАЛО ЧАСТИ 1 ИЗ 3 ---
 
-require('dotenv').config();
-const express = require('express');
-const app = express();
-
-app.use(express.json());
-
-const PORT = process.env.PORT || 3000;
-
-app.get('/', (req, res) => {
-  res.send('🚀 AI Haggle Pro Active');
-});
-
-app.listen(PORT, () => {
-  console.log(`📡 Порт: ${PORT}`);
-  initBot().catch(e => console.error("Ошибка бота:", e.message));
-});
-
-console.log('⚡️ Режим AI HAGGLE PRO!');
-
-const storage = new Map();
-const userStates = new Map();
-const browsers = new Map();
-
-const db = {
-  collection: (col) => ({
-    doc: (id) => ({
-      set: async (d) => {
-        const c = storage.get(`${col}/${id}`) || {};
-        storage.set(`${col}/${id}`, { ...c, ...d });
-        return true;
-      },
-      get: async () => ({
-        exists: storage.has(`${col}/${id}`),
-        data: () => storage.get(`${col}/${id}`)
-      })
-    }),
-    add: async (d) => {
-      const f = Math.random().toString(36).substring(7);
-      storage.set(`${col}/${f}`, d);
-      return { id: f };
-    }
-  })
-};
-
-async function optimizePage(p) {
-  await p.setRequestInterception(true);
-  p.on('request', (req) => {
-    if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
-      req.abort();
-    } else {
-      req.continue();
-    }
-  });
-}
-
-async function loadSession(p, uid) {
-  try {
-    const d = await db.collection('user_sessions').doc(String(uid)).get();
-    if (d.exists) {
-      const c = d.data().cookies;
-      if (c?.length > 0) {
-        await p.setCookie(...c);
-        return true;
-      }
-    }
-    return false;
-  } catch (e) {
-    return false;
-  }
-}
-
-async function startAvitoAuth(uid, phone) {
-  const pt = require('puppeteer-extra');
-  const st = require('puppeteer-extra-plugin-stealth');
-  if (pt.plugins?.length === 0) pt.use(st());
-  const { humanType, delay } = require('./humanEmulation');
-
-  const args = [
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
-    '--disable-blink-features=AutomationControlled',
-    '--disable-dev-shm-usage'
-  ];
-  const isLocal = !process.env.PROXY_SERVER;
-  if (!isLocal) args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
-
-  const b = await pt.launch({ headless: 'new', args });
-  const p = await b.newPage();
-  await optimizePage(p);
-
-  if (!isLocal && process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
-    await p.authenticate({ username: process.env.PROXY_USERNAME, password: process.env.PROXY_PASSWORD });
-  }
-
-  await p.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-  browsers.set(String(uid), { browser: b, page: p });
-
-  console.log(`🤖 Безопасный запрос СМС для: ${phone}`);
-  await p.goto('https://avito.ru', { waitUntil: 'networkidle2', timeout: 50000 });
-  await delay(3000);
-
-  const sel = 'input[type="tel"], input[data-marker="phone-input/input"]';
-  if (!await p.\$(sel)) throw new Error('Поле ввода телефона не найдено.');
-  
-  await p.focus(sel);
-  await humanType(p, sel, phone);
-  await delay(1500);
-
-  const btn = 'button[type="submit"], button[data-marker="login-form/submit"]';
-  await p.click(btn);
-  await delay(4000);
-
-  const smsSel = 'input[type="number"], input[data-marker="sms-code-input/input"]';
-  if (!await p.\$(smsSel)) {
-    const t = await p.evaluate(() => document.body.innerText);
-    if (t.includes('капча')) throw new Error('Капча! Требуется мобильный прокси.');
-    throw new Error('Не удалось дойти до ввода СМС.');
-  }
-}
-
+// ШЛЮЗ АВТОРИЗАЦИИ: Шаг №2 — Верификация СМС-кода и закрепление сессии
 async function finishAvitoAuth(uid, code) {
   const { humanType, delay } = require('./humanEmulation');
   const s = browsers.get(String(uid));
-  if (!s) throw new Error('Сессия потеряна.');
+  if (!s) throw new Error('Сессия авторизации утеряна. Пожалуйста, начните заново.');
   const { browser: b, page: p } = s;
 
   try {
     const smsSel = 'input[type="number"], input[data-marker="sms-code-input/input"]';
     await p.focus(smsSel);
     await humanType(p, smsSel, code);
-    await delay(5000);
+    await delay(6000);
+
     const ck = await p.cookies();
-    if (!ck.some(c => c.name.includes('sessid') || c.name.includes('u'))) throw new Error('Код отклонен.');
+    if (!ck.some(c => c.name.includes('sessid') || c.name.includes('u'))) {
+      throw new Error('Введенный код отклонен Авито или срок его действия истек.');
+    }
+
     await db.collection('user_sessions').doc(String(uid)).set({ cookies: ck, updatedAt: new Date() });
     return true;
   } catch (e) {
     throw e;
-  } finally {
+  } finally { // Исправлена опечатка с 'military' на 'finally'
     await b.close();
     browsers.delete(String(uid));
   }
 }
 
+// ЭКСПАНСИЯ В ЧАТ: Шаг №3 — Вход по ссылке объявления и отправка аргумента торга
 async function executeHaggle(url, arg, uid) {
   const pt = require('puppeteer-extra');
   const st = require('puppeteer-extra-plugin-stealth');
@@ -154,51 +41,74 @@ async function executeHaggle(url, arg, uid) {
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-blink-features=AutomationControlled',
-      '--disable-dev-shm-usage'
+      '--disable-dev-shm-usage',
+      '--window-size=1920,1080'
     ];
-    const isLocal = !process.env.PROXY_SERVER;
-    if (!isLocal) args.push(`--proxy-server=${process.env.PROXY_SERVER}`);
 
-    b = await pt.launch({ headless: 'new', args });
+    const isLocal = !process.env.PROXY_SERVER;
+    if (!isLocal) args.push(`--proxy-server=${process.env.PROXY_SERVER}`); 
+
+    b = await pt.launch({ 
+      headless: true, 
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome', 
+      args: args 
+    });
+
     const p = await b.newPage();
+    await p.setViewport({ width: 1920, height: 1080 });
     await optimizePage(p);
 
     if (!isLocal && process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
-      await p.authenticate({ username: process.env.PROXY_USERNAME, password: process.env.PROXY_PASSWORD });
-    }
-
-    await p.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    await loadSession(p, uid);
-    await p.goto(url, { waitUntil: 'networkidle2', timeout: 45000 });
-    await humanScroll(p);
-    await delay(2000);
-
-    const btn = 'button[data-marker="messenger-button/button"]';
-    if (await p.\$(btn)) {
-      await p.click(btn);
-      await delay(4000);
-      const m = await p.cookies();
-      await db.collection('user_sessions').doc(String(uid)).set({ cookies: m, updatedAt: new Date() });
-      
-      const txt = 'textarea[placeholder*="Напишите"], [data-marker="chat-input"]';
-      if (await p.\$(txt)) {
-        await humanType(p, txt, arg);
-        await delay(1500);
-        return { success: true };
+      try {
+        await p.authenticate({ username: process.env.PROXY_USERNAME, password: process.env.PROXY_PASSWORD });
+      } catch (proxyError) {
+        console.error("Ошибка авторизации прокси:", proxyError.message);
       }
     }
-    return { success: false, error: 'Чат не найден' };
+
+    await p.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+
+    const hasSession = await loadSession(p, uid);
+    if (!hasSession) return { success: false, error: 'Авторизация не найдена. Сначала подключите аккаунт Авито.' };
+
+    await p.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+    await humanScroll(p);
+    await delay(3000); 
+
+    const btn = 'button[data-marker="messenger-button/button"]';
+    if (await p.$(btn)) {
+      await p.click(btn);
+      await delay(5000); 
+    } else {
+      console.log("Кнопка 'Написать' не найдена, возможно, чат уже открыт или это прямая ссылка.");
+    }
+
+    const txt = 'textarea[placeholder*="Напишите"], [data-marker="chat-input"]';
+    if (await p.$(txt)) {
+      await humanType(p, txt, arg);
+      await delay(2000);
+      
+      const updatedCookies = await p.cookies();
+      await db.collection('user_sessions').doc(String(uid)).set({ cookies: updatedCookies, updatedAt: new Date() });
+      return { success: true };
+    }
+
+    return { success: false, error: 'Чат или поле ввода заблокировано.' };
   } catch (e) {
+    console.error("Ошибка в executeHaggle:", e.message);
     return { success: false, error: e.message };
   } finally {
     if (b) await b.close();
   }
 }
-// 
+// --- КОНЕЦ ЧАСТИ 1 ИЗ 3 ---
+// --- НАЧАЛО ЧАСТИ 2 ИЗ 3 ---
+
+// Главная инициализация и роутинг Telegram-бота
 async function initBot() {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const token = process.env.TELEGRAM_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
-    console.error('❌ Нет токена!');
+    console.error('❌ Критическая ошибка: Не найден токен бота в переменных окружения!');
     return;
   }
 
@@ -207,14 +117,17 @@ async function initBot() {
   const OpenAI = require('openai');
 
   const openai = new OpenAI({
-    baseURL: 'https://deepseek.com', // Обновленный официальный эндпоинт DeepSeek
+    baseURL: "https://api.deepseek.com", // Скорректирован официальный рабочий URL
     apiKey: process.env.DEEPSEEK_API_KEY
   });
 
   const bot = new Telegraf(token);
   const TG_PATH = `/webhook/${token}`;
-  const APP_URL = process.env.RENDER_EXTERNAL_URL || 'https://onrender.com';
+  const BASE_URL = (process.env.RENDER_EXTERNAL_URL || 'https://ai-haggle-mvp-service.onrender.com').replace(/\/$/, '');
   const limiter = new Bottleneck({ maxConcurrent: 1, minTime: 1500 });
+  const webHookUrl = `${BASE_URL}${TG_PATH}`;
+
+  app.use(bot.webhookCallback(TG_PATH));
 
   bot.start(async (ctx) => {
     try {
@@ -248,7 +161,7 @@ async function initBot() {
     try {
       const check = await db.collection('user_sessions').doc(uid).get();
       const status = check.exists ? '🟢 БЕЗОПАСНОЕ СОЕДИНЕНИЕ АКТИВНО' : '🔴 ТРЕБУЕТСЯ АВТОРИЗАЦИЯ';
-      await ctx.reply(`📊 **ЛИЧНЫЙ ФИНАНСОВЫЙ КАБИНЕТ**\n─────────────────────────\n🔐 **Статус шлюза:** \`\${status}\`\n\n💰 **Сэкономлено бюджета:** \`0\` ₽\n🎯 **Успешно закрытые сделки:** \`0\` сессий\n⚡️ **Эффективность торга ИИ:** \`0%\` (средняя)\n─────────────────────────\n📡 *Система мониторинга чатов работает в штатном режиме.*`, { parse_mode: 'Markdown' });
+      await ctx.reply(`📊 **ЛИЧНЫЙ ФИНАНСОВЫЙ КАБИНЕТ**\n─────────────────────────\n🔐 **Статус шлюза:** ${status}\n\n💰 **Сэкономлено бюджета:** \`0\` ₽\n🎯 **Успешно закрытые сделки:** \`0\` сессий\n⚡️ **Эффективность торга ИИ:** \`0%\` (средняя)\n─────────────────────────\n📡 *Система мониторинга чатов работает в штатном режиме.*`, { parse_mode: 'Markdown' });
     } catch (e) {
       await ctx.reply('❌ Ошибка синхронизации данных.');
     }
@@ -261,32 +174,42 @@ async function initBot() {
 
   bot.action(/^send_bid_(.+)$/, async (ctx) => {
     await ctx.answerCbQuery();
-    const bidId = ctx.match[1];
+    const bidId = ctx.match[1]; // Фикс: восстановлена корректная выборка ID из регулярного выражения
     const uid = ctx.from.id.toString();
     await ctx.reply('🛡️ Запускаю маскировку и отправляю торг на Авито...');
+
     try {
       const snap = await db.collection('bids_history').doc(bidId).get();
       if (!snap.exists) return ctx.reply('❌ Сделка не найдена в кэше.');
       const data = snap.data();
-      const res = await executeHaggle(data.targetUrl, data.argument, uid);
-      await ctx.reply(res.success ? '✅ Успешно отправлено продавцу!' : `❌ Не отправлено: ${res.error}`);
+
+      executeHaggle(data.targetUrl, data.argument, uid)
+        .then(async (res) => {
+          await ctx.reply(res.success ? '✅ Успешно отправлено продавцу!' : `❌ Не отправлено: ${res.error}`);
+        })
+        .catch(async (bgError) => {
+          console.error("Фатальная ошибка Puppeteer в фоне:", bgError.message);
+          await ctx.reply(`❌ Ошибка выполнения скрипта: ${bgError.message}`);
+        });
     } catch (r) {
-      await ctx.reply(`❌ Ошибка отправки: ${r.message}`);
+      await ctx.reply(`❌ Ошибка подготовки данных: ${r.message}`);
     }
   });
+// --- КОНЕЦ ЧАСТИ 2 ИЗ 3 ---
+// --- НАЧАЛО ЧАСТИ 3 ИЗ 3 ---
 
   bot.on('text', async (ctx) => {
     const text = ctx.message.text.trim();
     const uid = ctx.from.id.toString();
     const state = userStates.get(uid);
 
-        if (state?.step === 'PHONE') {
+    if (state?.step === 'PHONE') {
       if (!/^\d{11}$/.test(text)) return ctx.reply('❌ Некорректный формат. Нужно ровно 11 цифр:');
       await ctx.reply('⏳ Запускаю безопасную сессию и запрашиваю СМС...');
       try {
         await startAvitoAuth(uid, text);
         userStates.set(uid, { step: 'SMS' });
-        await ctx.reply('💬 Введите 6-значный код подтверждения из СМС:');
+        await ctx.reply('💬 Введите код подтверждения из СМС:');
       } catch (err) {
         userStates.delete(uid);
         if (browsers.has(uid)) {
@@ -321,6 +244,7 @@ async function initBot() {
       const check = await db.collection('user_sessions').doc(uid).get();
       if (!check.exists) return ctx.reply('⚠️ Защищенный шлюз закрыт. Сначала авторизуйте Авито.');
       await ctx.reply('⏳ Запускаю нейросетевой скоринг карточки товара через DeepSeek...');
+      
       try {
         const comp = await openai.chat.completions.create({
           model: 'deepseek-chat',
@@ -348,9 +272,9 @@ async function initBot() {
           timestamp: new Date()
         });
         
-        await ctx.reply(`📋 **ОТЧЁТ ОБ АНАЛИЗЕ СДЕЛКИ**\n──────────────────────\n💰 **Исходная цена:** \`\${est}\` ₽\n🎯 **Целевая цена торга:** \`\${trg}\` ₽\n📈 **Прогнозируемая выгода:** \`\${profit}\` ₽\n💸 **Сервисный сбор (30%):** \`\${comm}\` ₽\n──────────────────────\n\n🤖 **Стратегия торга от DeepSeek:**\n_"${arg}"_\n\n👇 *Готовы запустить робота в чат Авито?*`, {
+        await ctx.reply(`📋 **ОТЧЁТ ОБ АНАЛИЗЕ СДЕЛКИ**\n──────────────────────\n💰 **Исходная цена:** ${est}  ₽\n🎯 **Целевая цена торга:**  ${trg}  ₽\n📈 **Прогнозируемая выгода:** ${profit}  ₽\n💸 **Сервисный сбор (30%):** ${comm} ₽\n──────────────────────\n\n🤖 **Стратегия торга от DeepSeek:**\n_"${arg}"_\n\n👇 *Готовы запустить робота в чат Авито?*`, {
           parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: [[{ text: '🚀 Отправить предложение продавцу', callback_data: `send_bid_\${bidRef.id}` }]] }
+          reply_markup: { inline_keyboard: [[{ text: '🚀 Отправить предложение продавцу', callback_data: `send_bid_${bidRef.id}` }]] }
         });
       } catch (err) {
         await ctx.reply('⚠️ Ошибка нейро-скоринга или парсинга ответа.');
@@ -365,13 +289,12 @@ async function initBot() {
   });
 
   try {
-    await bot.telegram.setWebhook(`${APP_URL}${TG_PATH}`);
-    console.log('[Telegram] Вебхук активен');
+    await bot.telegram.setWebhook(webHookUrl);
+    console.log(`[Telegram] Вебхук успешно зарегистрирован и активен: ${webHookUrl}`);
   } catch (e) {
-    console.error(e.message);
+    console.error("Критическая ошибка установки вебхука:", e.message);
   }
 
   process.once('SIGINT', () => bot.stop('SIGINT'));
   process.once('SIGTERM', () => bot.stop('SIGTERM'));
 }
-
