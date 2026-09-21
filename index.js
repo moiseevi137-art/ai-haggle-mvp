@@ -182,7 +182,7 @@ async function loadSession(page, uid) {
 
 // Главная инициализация и роутинг Telegram-бота
 async function initBot() {
-  const rawToken = process.env.TELEGRAM_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+  const rawToken = process.env.TELEGRAM_BOT_TOKEN;
   if (!rawToken) {
     console.error('❌ Критическая ошибка: Не найден токен бота в переменных окружения!');
     return;
