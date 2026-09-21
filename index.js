@@ -149,6 +149,37 @@ async function executeHaggle(url, arg, uid) {
 // --- КОНЕЦ ЧАСТИ 1 ИЗ 3 ---
 // --- НАЧАЛО ЧАСТИ 2 ИЗ 3 ---
 
+// Вспомогательные функции для работы браузера (Добавлено, чтобы исправить падение executeHaggle)
+async function optimizePage(page) {
+  try {
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const type = req.resourceType();
+      if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
+        req.abort();
+      } else {
+        req.continue();
+      }
+    });
+  } catch (e) {
+    console.error("Ошибка оптимизации страницы:", e.message);
+  }
+}
+
+async function loadSession(page, uid) {
+  try {
+    const snap = await db.collection('user_sessions').doc(String(uid)).get();
+    if (!snap.exists) return false;
+    const data = snap.data();
+    if (!data || !data.cookies) return false;
+    await page.setCookie(...data.cookies);
+    return true;
+  } catch (e) {
+    console.error("Ошибка загрузки кук:", e.message);
+    return false;
+  }
+}
+
 // Главная инициализация и роутинг Telegram-бота
 async function initBot() {
   const token = process.env.TELEGRAM_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
@@ -165,6 +196,7 @@ async function initBot() {
     baseURL: "https://api.deepseek.com", // Скорректирован официальный рабочий URL
     apiKey: process.env.DEEPSEEK_API_KEY
   });
+
 
   const bot = new Telegraf(token);
   const TG_PATH = '/webhook/' + token;
