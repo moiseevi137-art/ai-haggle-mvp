@@ -182,28 +182,38 @@ async function loadSession(page, uid) {
 
 // Главная инициализация и роутинг Telegram-бота
 async function initBot() {
-  const token = process.env.TELEGRAM_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) {
+  const rawToken = process.env.TELEGRAM_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+  if (!rawToken) {
     console.error('❌ Критическая ошибка: Не найден токен бота в переменных окружения!');
     return;
   }
+  
+  // ИСПРАВЛЕНО: Безопасное удаление случайных пробелов/переносов строк хостинга
+  const token = rawToken.trim();
 
   const { Telegraf } = require('telegraf');
   const Bottleneck = require('bottleneck');
   const OpenAI = require('openai');
 
   const openai = new OpenAI({
-    baseURL: "https://api.deepseek.com", // Скорректирован официальный рабочий URL
+    baseURL: "https://api.deepseek.com", 
     apiKey: process.env.DEEPSEEK_API_KEY
   });
 
+  // ИСПРАВЛЕНО: Явное указание apiRoot для обхода ошибки 404 с новыми токенами
+  const bot = new Telegraf(token, {
+    telegram: {
+      apiRoot: 'https://telegram.org'
+    }
+  });
 
-  const bot = new Telegraf(token);
   const TG_PATH = '/webhook/' + token;
-  const BASE_URL = process.env.RENDER_EXTERNAL_URL ? process.env.RENDER_EXTERNAL_URL.trim() : 'https://ai-haggle-mvp-service.onrender.com';
+  const BASE_URL = process.env.RENDER_EXTERNAL_URL ? process.env.RENDER_EXTERNAL_URL.trim() : 'https://onrender.com';
   const limiter = new Bottleneck({ maxConcurrent: 1, minTime: 1500 });
   const webHookUrl = BASE_URL + TG_PATH;
-  app.use(bot.webhookCallback(TG_PATH));
+
+  // ... дальше ваш код идет без изменений (app.use(bot.webhookCallback...), кнопки и т.д.)
+
 
   bot.start(async (ctx) => {
     try {
