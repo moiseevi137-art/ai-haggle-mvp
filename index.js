@@ -376,7 +376,7 @@ async function initBot() {
 
     // ИСПРАВЛЕНО: Прямая регистрация вебхука через нативный HTTPS в обход валидатора Telegraf
   const https = require('https');
-  const registerUrl = `https://api.telegram.org{token}/setWebhook?url=${encodeURIComponent(webHookUrl)}`;
+  const registerUrl = `https://api.telegram.org/bot${token}/setWebhook?url=${encodeURIComponent(webHookUrl)}`;
 
   https.get(registerUrl, (response) => {
     let data = '';
