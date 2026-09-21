@@ -374,13 +374,31 @@ async function initBot() {
     bot.handleUpdate(req.body, res);
   });
 
-  try {
-    await bot.telegram.setWebhook(webHookUrl);
-    console.log(`[Telegram] Вебхук успешно зарегистрирован и активен: ${webHookUrl}`);
-  } catch (e) {
-    console.error("Критическая ошибка установки вебхука:", e.message);
-  }
+    // ИСПРАВЛЕНО: Прямая регистрация вебхука через нативный HTTPS в обход валидатора Telegraf
+  const https = require('https');
+  const registerUrl = `https://api.telegram.org{token}/setWebhook?url=${encodeURIComponent(webHookUrl)}`;
 
-    process.once('SIGINT', () => bot.stop('SIGINT'));
+  https.get(registerUrl, (response) => {
+    let data = '';
+    response.on('data', (chunk) => { data += chunk; });
+    response.on('end', () => {
+      try {
+        const resObj = JSON.parse(data);
+        if (resObj.ok) {
+          console.log(`[Telegram] Вебхук успешно зарегистрирован напрямую и активен: ${webHookUrl}`);
+        } else {
+          console.error(`[Telegram] Ошибка от сервера Telegram: ${resObj.description}`);
+        }
+      } catch (parseErr) {
+        console.error("[Telegram] Не удалось распарсить ответ сервера:", data);
+      }
+    });
+  }).on("error", (err) => {
+    console.error("Критическая ошибка отправки запроса вебхука:", err.message);
+  });
+
+  // ЭТИ СТРОКИ ОСТАЮТСЯ БЕЗ ИЗМЕНЕНИЙ:
+  process.once('SIGINT', () => bot.stop('SIGINT'));
   process.once('SIGTERM', () => bot.stop('SIGTERM'));
 }
+
