@@ -206,9 +206,12 @@ async function executeHaggle(url, arg, uid) {
     const isLocal = !process.env.PROXY_SERVER;
     if (!isLocal) args.push(`--proxy-server=${process.env.PROXY_SERVER}`); 
 
+    // Задаем точный путь к Chrome, который скачался на Render
+    const renderChromePath = '/opt/render/.cache/puppeteer/chrome/linux-153.0.8010.36/chrome-linux64/chrome';
+
     b = await pt.launch({ 
       headless: true, 
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || renderChromePath, 
       args: args 
     });
 
