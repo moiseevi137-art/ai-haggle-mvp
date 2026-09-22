@@ -73,6 +73,117 @@ async function finishAvitoAuth(uid, code) {
   }
 }
 
+// ==================== ИСПРАВЛЕННЫЙ КУСОК №2 ====================
+
+// ШЛЮЗ АВТОРИЗАЦИИ: Шаг №1 — Инициализация браузера и запрос СМС
+async function startAvitoAuth(uid, phone) {
+  const pt = require('puppeteer-extra');
+  const st = require('puppeteer-extra-plugin-stealth');
+  if (pt.plugins?.length === 0) pt.use(st());
+  const { humanType, delay } = require('./humanEmulation');
+
+  // Оптимизированные аргументы для экономии ОЗУ на бесплатном тарифе Render
+  const args = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-blink-features=AutomationControlled',
+    '--disable-dev-shm-usage',
+    '--disable-accelerated-2d-canvas',
+    '--disable-gpu',
+    '--no-first-run',
+    '--no-zygote',
+    '--single-process', 
+    '--window-size=1280,720' 
+  ];
+
+  const isLocal = !process.env.PROXY_SERVER;
+  if (!isLocal) args.push(`--proxy-server=${process.env.PROXY_SERVER}`); 
+
+  const b = await pt.launch({ 
+    headless: true, 
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    args: args 
+  });
+
+  try {
+    const p = await b.newPage();
+    await p.setViewport({ width: 1280, height: 720 });
+
+    // Легкая фильтрация медиа-трафика для защиты от падения сервера по лимиту памяти
+    await p.setRequestInterception(true);
+    p.on('request', (req) => {
+      const type = req.resourceType();
+      if (['image', 'media', 'font'].includes(type)) {
+        req.abort();
+      } else {
+        req.continue();
+      }
+    });
+
+    if (!isLocal && process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
+      try {
+        await p.authenticate({ username: process.env.PROXY_USERNAME, password: process.env.PROXY_PASSWORD });
+      } catch (proxyError) {
+        console.error("Ошибка авторизации прокси:", proxyError.message);
+      }
+    }
+
+    await p.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+
+    // ФИКС: Переходим сразу на страницу авторизации, а не на главную
+    await p.goto('https://avito.ru#login?authMechanism=phone', { waitUntil: 'networkidle2', timeout: 60000 });
+    await delay(2000);
+
+    const phoneSel = 'input[data-marker="login-form/phone"], input[type="tel"]';
+    await p.waitForSelector(phoneSel, { timeout: 15000 });
+    await p.focus(phoneSel);
+    
+    await humanType(p, phoneSel, phone);
+    await delay(1500);
+
+    const submitSel = 'button[data-marker="login-form/submit"]';
+    await p.waitForSelector(submitSel, { timeout: 5000 });
+    await p.click(submitSel);
+    
+    await delay(5000);
+
+    browsers.set(String(uid), { browser: b, page: p });
+    return true;
+
+  } catch (e) {
+    await b.close();
+    throw e;
+  }
+}
+
+// ШЛЮЗ АВТОРИЗАЦИИ: Шаг №2 — Верификация СМС-кода и закрепление сессии
+async function finishAvitoAuth(uid, code) {
+  const { humanType, delay } = require('./humanEmulation');
+  const s = browsers.get(String(uid));
+  if (!s) throw new Error('Сессия авторизации утеряна. Пожалуйста, начните заново.');
+  const { browser: b, page: p } = s;
+
+  try {
+    const smsSel = 'input[type="number"], input[data-marker="sms-code-input/input"]';
+    await p.focus(smsSel);
+    await humanType(p, smsSel, code);
+    await delay(6000);
+
+    const ck = await p.cookies();
+    if (!ck.some(c => c.name.includes('sessid') || c.name.includes('u'))) {
+      throw new Error('Введенный код отклонен Авито или срок его действия истек.');
+    }
+
+    await db.collection('user_sessions').doc(String(uid)).set({ cookies: ck, updatedAt: new Date() });
+    return true;
+  } catch (e) {
+    throw e;
+  } finally { // ФИКС: Исправлено написание finaly на finally
+    await b.close();
+    browsers.delete(String(uid));
+  }
+}
+
 // ЭКСПАНСИЯ В ЧАТ: Шаг №3 — Вход по ссылке объявления и отправка аргумента торга
 async function executeHaggle(url, arg, uid) {
   const pt = require('puppeteer-extra');
@@ -87,7 +198,9 @@ async function executeHaggle(url, arg, uid) {
       '--disable-setuid-sandbox',
       '--disable-blink-features=AutomationControlled',
       '--disable-dev-shm-usage',
-      '--window-size=1920,1080'
+      '--disable-gpu',
+      '--single-process',
+      '--window-size=1280,720'
     ];
 
     const isLocal = !process.env.PROXY_SERVER;
@@ -95,12 +208,12 @@ async function executeHaggle(url, arg, uid) {
 
     b = await pt.launch({ 
       headless: true, 
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome', 
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       args: args 
     });
 
     const p = await b.newPage();
-    await p.setViewport({ width: 1920, height: 1080 });
+    await p.setViewport({ width: 1280, height: 720 });
     await optimizePage(p);
 
     if (!isLocal && process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
@@ -146,6 +259,7 @@ async function executeHaggle(url, arg, uid) {
     if (b) await b.close();
   }
 }
+
 // --- КОНЕЦ ЧАСТИ 1 ИЗ 3 ---
 // --- НАЧАЛО ЧАСТИ 2 ИЗ 3 ---
 
