@@ -77,33 +77,63 @@ async function finishAvitoAuth(uid, code) {
 
 // ШЛЮЗ АВТОРИЗАЦИИ: Шаг №1 — Инициализация браузера и запрос СМС
 async function startAvitoAuth(uid, phone) {
+
   const pt = require('puppeteer-extra');
+
   const st = require('puppeteer-extra-plugin-stealth');
+
   if (pt.plugins?.length === 0) pt.use(st());
+
   const { humanType, delay } = require('./humanEmulation');
 
+
   // Оптимизированные аргументы для экономии ОЗУ на бесплатном тарифе Render
+
   const args = [
+
     '--no-sandbox',
+
     '--disable-setuid-sandbox',
+
     '--disable-blink-features=AutomationControlled',
+
     '--disable-dev-shm-usage',
+
     '--disable-accelerated-2d-canvas',
+
     '--disable-gpu',
+
     '--no-first-run',
+
     '--no-zygote',
+
     '--single-process', 
+
     '--window-size=1280,720' 
+
   ];
 
+
   const isLocal = !process.env.PROXY_SERVER;
+
   if (!isLocal) args.push(`--proxy-server=${process.env.PROXY_SERVER}`); 
 
+
+  // Задаем точный путь к Chrome, который скачался на Render
+
+  const renderChromePath = '/opt/render/.cache/puppeteer/chrome/linux-153.0.8010.36/chrome-linux64/chrome';
+
+
   const b = await pt.launch({ 
+
     headless: true, 
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || renderChromePath,
+
     args: args 
+
   });
+
 
   try {
     const p = await b.newPage();
