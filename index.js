@@ -125,13 +125,9 @@ async function startAvitoAuth(uid, phone) {
 
 
   const b = await pt.launch({ 
-
     headless: true, 
-
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || renderChromePath,
-
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     args: args 
-
   });
 
 
@@ -241,10 +237,9 @@ async function executeHaggle(url, arg, uid) {
 
     b = await pt.launch({ 
       headless: true, 
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || renderChromePath, 
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined, 
       args: args 
-    });
-
+    })
     const p = await b.newPage();
     await p.setViewport({ width: 1280, height: 720 });
     await optimizePage(p);
