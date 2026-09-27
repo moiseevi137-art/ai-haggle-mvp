@@ -1,272 +1,77 @@
-require('dotenv').config();
-const fs = require('fs');
-const path = require('path');
-const express = require('express');
-const admin = require('firebase-admin');
-const { Telegraf } = require('telegraf');
-const Bottleneck = require('bottleneck');
-const OpenAI = require('openai');
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Haggle: Торг</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f4f5f7; margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .chat-container { width: 100%; max-width: 450px; background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; height: 80vh; overflow: hidden; }
+        .chat-header { background: #00AAFF; color: white; padding: 15px; font-weight: bold; text-align: center; font-size: 18px; }
+        .messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        .msg { max-width: 75%; padding: 10px 14px; border-radius: 15px; font-size: 15px; line-height: 1.4; }
+        .user { background: #00AAFF; color: white; align-self: flex-end; border-bottom-right-radius: 2px; }
+        .bot { background: #f0f2f5; color: #1c1e21; align-self: flex-start; border-bottom-left-radius: 2px; }
+        .input-area { display: flex; padding: 10px; border-top: 1px solid #eee; background: #fff; }
+        .input-area input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 20px; outline: none; font-size: 15px; }
+        .input-area button { background: #00AAFF; color: white; border: none; padding: 0 20px; margin-left: 8px; border-radius: 20px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
 
-const app = express();
-app.use(express.json());
+<div class="chat-container">
+    <div class="chat-header">Переговорщик AI-Haggle</div>
+    <div class="messages" id="chat-messages">
+        <div class="msg bot">Привет! По поводу объявления. Какую цену предложите?</div>
+    </div>
+    <div class="input-area">
+        <input type="text" id="user-input" placeholder="Напишите вашу цену..." onkeypress="handleKey(event)">
+        <button onclick="sendMessage()">➡️</button>
+    </div>
+</div>
 
-// Отдаем твою HTML-страницу при переходе на корень сайта http://твой-домен/
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
+<script>
+    let currentWave = 1;
+    const itemPrice = 5000; // Стартовая цена товара для теста
+    const userId = "test-user-" + Math.random().toString(36).substring(7);
 
-const PORT = process.env.PORT || 10000;
-console.log('⚡️ Режим AI HAGGLE PRO с поддержкой Web-интерфейса!');
+    function appendMessage(text, sender) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `msg ${sender}`;
+        msgDiv.innerText = text;
+        const container = document.getElementById('chat-messages');
+        container.appendChild(msgDiv);
+        container.scrollTop = container.scrollHeight;
+    }
 
-// Глобальные коллекции состояний (в оперативной памяти)
-const userStates = new Map();
-const browsers = new Map();
+    async function sendMessage() {
+        const input = document.getElementById('user-input');
+        const text = input.value.trim();
+        if (!text) return;
 
-// ==========================================================
-// 🛡️ ВШИТЫЙ БРОНЕБОЙНЫЙ МОДУЛЬ АНТИФРОД-МАСКИРОВКИ ЧЕЛОВЕКА
-// ==========================================================
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        appendMessage(text, 'user');
+        input.value = '';
 
-async function humanType(page, selector, text) {
-    await page.waitForSelector(selector, { timeout: 5000 });
-    await page.focus(selector);
-    
-    const allowTypos = text.length > 15;
-    
-    for (const char of text) {
-        const charDelay = Math.floor(Math.random() * (150 - 60 + 1)) + 60;
-        await page.type(selector, char);
-        await delay(charDelay);
-        
-        if (char === ' ' && Math.random() < 0.40) {
-            await delay(Math.floor(Math.random() * (400 - 150 + 1)) + 150);
-        }
-
-        if (allowTypos && Math.random() < 0.03 && char !== ' ') {
-            const wrongChars = 'фывапролджэйцукенгшщзхъ';
-            const randomWrongChar = wrongChars[Math.floor(Math.random() * wrongChars.length)];
+        try {
+            // Запрос идет на тот же сервер Amvera, где крутится наш index.js
+            const response = await fetch('/api/negotiate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, userMessage: text, currentWave, itemPrice })
+            });
             
-            await page.type(selector, randomWrongChar);
-            await delay(Math.floor(Math.random() * 150) + 100);
-            await page.keyboard.press('Backspace');
-            await delay(Math.floor(Math.random() * 150) + 100);
-        }
-        
-        if (Math.random() < 0.03) {
-            await delay(Math.floor(Math.random() * (1000 - 300 + 1)) + 300);
+            const data = await response.json();
+            appendMessage(data.text, 'bot');
+            currentWave = data.nextWave; // Запоминаем текущую волну торга
+        } catch (error) {
+            console.error('Ошибка:', error);
+            appendMessage('Ошибка связи с сервером AI.', 'bot');
         }
     }
-}
 
-async function humanScroll(page) {
-    const totalDistance = Math.floor(Math.random() * (600 - 300 + 1)) + 300;
-    const steps = 10;
-    const stepDistance = Math.floor(totalDistance / steps);
-    
-    for (let i = 0; i < steps; i++) {
-        await page.evaluate((y) => window.scrollBy(0, y), stepDistance);
-        await delay(Math.floor(Math.random() * (150 - 50 + 1)) + 50);
+    function handleKey(e) {
+        if (e.key === 'Enter') sendMessage();
     }
-    await delay(Math.floor(Math.random() * (2500 - 1200 + 1)) + 1200);
-}
-
-// ==========================================================
-// 1. ИНИЦИАЛИЗАЦИЯ НАСТОЯЩЕЙ БАЗЫ ДАННЫХ FIREBASE ИЗ BASE64
-// ==========================================================
-let db;
-const KEY_PATH = path.join(__dirname, 'firebase-key.json');
-
-if (process.env.FIREBASE_KEY_BASE64) {
-    try {
-        fs.writeFileSync(KEY_PATH, Buffer.from(process.env.FIREBASE_KEY_BASE64, 'base64').toString('utf-8'));
-        console.log("✅ Ключ Firebase успешно воссоздан из Base64 окружения!");
-        
-        admin.initializeApp({
-            credential: admin.credential.cert(KEY_PATH)
-        });
-        db = admin.firestore();
-        console.log("🔥 Firebase Firestore успешно инициализирован.");
-    } catch (err) {
-        console.error("❌ Критическая ошибка初始化 Firebase:", err.message);
-        process.exit(1);
-    }
-} else {
-    console.error("⚠️ Переменная FIREBASE_KEY_BASE64 отсутствует! Включаю режим заглушки.");
-    const storage = new Map();
-    db = {
-        collection: (col) => ({
-            doc: (id) => ({
-                set: async (d) => {
-                    const c = storage.get(col + '/' + id) || {};
-                    storage.set(col + '/' + id, { ...c, ...d });
-                    return true;
-                },
-                get: async () => ({
-                    exists: storage.has(col + '/' + id),
-                    data: () => storage.get(col + '/' + id)
-                })
-            }),
-            add: async (d) => {
-                const f = Math.random().toString(36).substring(7);
-                storage.set(col + '/' + f, d);
-                return { id: f };
-            }
-        })
-    };
-}
-
-// Инициализация API DeepSeek
-const openai = new OpenAI({
-    baseURL: "https://deepseek.com",
-    apiKey: process.env.DEEPSEEK_API_KEY || "dummy-key"
-});
-
-// ==========================================================
-// 🌐 ОБРАБОТКА API-РОУТА ДЛЯ ТВОЕГО ВЕБ-ЧАТА (`/api/negotiate`)
-// ==========================================================
-app.post('/api/negotiate', async (req, res) => {
-    const { userId, userMessage, currentWave, itemPrice } = req.body;
-
-    try {
-        // Запрос к DeepSeek ИИ для ведения диалога торга прямо на веб-странице
-        const completion = await openai.chat.completions.create({
-            model: 'deepseek-chat',
-            messages: [
-                { 
-                    role: 'system', 
-                    content: `Ты — жесткий, но вежливый авто-переговорщик AI-Haggle. Твоя цель — снизить цену товара (стартовая цена: ${itemPrice} руб) для покупателя. Сейчас идет волна торга №${currentWave}. Отвечай коротко, в стиле чата Авито. Верни ответ строго в формате JSON: { "text": "твой ответ продавцу", "nextWave": ${currentWave + 1} }` 
-                },
-                { role: 'user', content: userMessage }
-            ],
-            response_format: { type: 'json_object' }
-        });
-
-        const aiResponse = JSON.parse(completion.choices[0].message.content);
-        res.json(aiResponse);
-    } catch (error) {
-        console.error("Ошибка API веб-торга:", error.message);
-        res.status(500).json({ text: "Извините, модуль ИИ временно задумался. Попробуйте еще раз.", nextWave: currentWave });
-    }
-});
-
-// ==========================================================
-// 2. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ И ШЛЮЗЫ АВТОРИЗАЦИИ (PUPPETEER)
-// ==========================================================
-async function optimizePage(page) {
-    try {
-        await page.setRequestInterception(true);
-        page.on('request', (req) => {
-            const type = req.resourceType();
-            if (['image', 'stylesheet', 'font', 'media'].includes(type)) {
-                req.abort();
-            } else {
-                req.continue();
-            }
-        });
-    } catch (e) {
-        console.error("Ошибка оптимизации страницы:", e.message);
-    }
-}
-
-async function loadSession(page, uid) {
-    try {
-        const snap = await db.collection('user_sessions').doc(String(uid)).get();
-        if (!snap.exists) return false;
-        const data = snap.data();
-        if (!data || !data.cookies) return false;
-        await page.setCookie(...data.cookies);
-        return true;
-    } catch (e) {
-        console.error("Ошибка загрузки кук:", e.message);
-        return false;
-    }
-}
-
-async function startAvitoAuth(uid, phone) {
-    const pt = require('puppeteer-extra');
-    const st = require('puppeteer-extra-plugin-stealth');
-    if (pt.plugins?.length === 0) pt.use(st());
-
-    const args = [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-blink-features=AutomationControlled',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process', 
-        '--window-size=1280,720' 
-    ];
-
-    const isLocal = !process.env.PROXY_SERVER;
-    if (!isLocal) args.push(`--proxy-server=${process.env.PROXY_SERVER}`); 
-
-    const b = await pt.launch({ 
-        headless: true, 
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-        args: args 
-    });
-
-    try {
-        const p = await b.newPage();
-        await p.setViewport({ width: 1280, height: 720 });
-
-        await p.setRequestInterception(true);
-        p.on('request', (req) => {
-            const type = req.resourceType();
-            if (['image', 'media', 'font'].includes(type)) {
-                req.abort();
-            } else {
-                req.continue();
-            }
-        });
-
-        if (!isLocal && process.env.PROXY_USERNAME && process.env.PROXY_PASSWORD) {
-            try {
-                await p.authenticate({ username: process.env.PROXY_USERNAME, password: process.env.PROXY_PASSWORD });
-            } catch (proxyError) {
-                console.error("Ошибка авторизации прокси:", proxyError.message);
-            }
-        }
-
-        await p.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
-
-        await p.goto('https://avito.ru', { waitUntil: 'networkidle2', timeout: 60000 });
-        await delay(2000);
-
-        const loginBtnSel = '[data-marker="header/login-button"]';
-        await p.waitForSelector(loginBtnSel, { timeout: 15000 });
-        await p.click(loginBtnSel);
-        await delay(2000);
-
-        const phoneSel = 'input[data-marker="login-form/phone"], input[type="tel"]';
-        await p.waitForSelector(phoneSel, { timeout: 15000 });
-        await p.focus(phoneSel);
-        
-        await humanType(p, phoneSel, phone);
-        await delay(1500);
-
-        const submitSel = 'button[data-marker="login-form/submit"], button[type="submit"], [data-marker="social-sharing/login-button"]';
-        await p.waitForSelector(submitSel, { timeout: 5000 });
-        await p.click(submitSel);
-        
-        await delay(5000);
-
-        browsers.set(String(uid), { browser: b, page: p });
-        return true;
-
-    } catch (e) {
-        await b.close();
-        throw e;
-    }
-}
-
-async function finishAvitoAuth(uid, code) {
-    const s = browsers.get(String(uid));
-    if (!s) throw new Error('Сессия авторизации утеряна. Пожалуйста, начните заново.');
-    const { browser: b, page: p } = s;
-
-    try {
-        const smsSel = 'input[type="number"], input[data-marker="sms-code-input/input"]';
-        await p.waitForSelector(smsSel, { timeout: 10000 });
+</script>
+</body>
+</html>
