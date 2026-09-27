@@ -1,9 +1,10 @@
 // Изолированные параметры конфигурации для AI HAGGLE PRO
 module.exports = {
-  // Настройки для запуска Puppeteer в Docker-контейнере на Render
+  // Настройки для запуска Puppeteer, полностью оптимизированные под Amvera (1 ГБ ОЗУ)
   puppeteerOptions: {
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
-    headless: 'new',
+    // Автоматически берет путь из переменной или использует локальный Chrome из .puppeteerrc.cjs
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    headless: true, // В свежих версиях Puppeteer пишется true вместо 'new'
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -11,9 +12,16 @@ module.exports = {
       '--disable-gpu',
       '--no-first-run',
       '--no-zygote',
-      '--single-process', // Критично для экономии оперативной памяти на Render
+      '--single-process', // Критично для экономии оперативной памяти (1 ГБ ОЗУ)
+      '--disable-blink-features=AutomationControlled',
+      '--window-size=1280,720',
       
-      // Бронебойный прокси-слой: принудительно заворачиваем DNS-запросы внутрь мобильного прокси'--proxy-server=http://HTTPmproxy.site:26013','--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE HTTPmproxy.site']},
+      // Динамический прокси-слой: если в Amvera задан PROXY_SERVER, он применится автоматически
+      ...(process.env.PROXY_SERVER ? [`--proxy-server=${process.env.PROXY_SERVER}`] : []),
+      // Бронебойные правила резолва для прокси (если сервер указан)
+      ...(process.env.PROXY_SERVER ? ['--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE ' + new URL(process.env.PROXY_SERVER).hostname] : [])
+    ]
+  },
 
   // Настройки интеграции с официальным API DeepSeek
   deepseek: {
