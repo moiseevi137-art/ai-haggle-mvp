@@ -7,6 +7,11 @@ const { Telegraf } = require('telegraf');
 const Bottleneck = require('bottleneck');
 const OpenAI = require('openai');
 
+// Глобальное и безопасное подключение Puppeteer Stealth (один раз на весь проект)
+const pt = require('puppeteer-extra');
+const st = require('puppeteer-extra-plugin-stealth');
+if (pt.plugins?.length === 0) pt.use(st());
+
 const app = express();
 app.use(express.json());
 
@@ -22,15 +27,16 @@ const browsers = new Map();
 // 1. ИНИЦИАЛИЗАЦИЯ НАСТОЯЩЕЙ БАЗЫ ДАННЫХ FIREBASE ИЗ BASE64
 // ==========================================================
 let db;
-const KEY_PATH = path.join(__dirname, 'firebase-key.json');
 
 if (process.env.FIREBASE_KEY_BASE64) {
     try {
-        fs.writeFileSync(KEY_PATH, Buffer.from(process.env.FIREBASE_KEY_BASE64, 'base64').toString('utf-8'));
-        console.log("✅ Ключ Firebase успешно воссоздан из Base64 окружения!");
+        // Декодируем строку base64 сразу в JSON-объект, минуя жесткий диск
+        const serviceAccount = JSON.parse(Buffer.from(process.env.FIREBASE_KEY_BASE64, 'base64').toString('utf-8'));
+        console.log("✅ Ключ Firebase успешно декодирован из Base64 окружения!");
         
         admin.initializeApp({
-            credential: admin.credential.cert(KEY_PATH)
+            // Передаем объект конфигурации напрямую в метод cert()
+            credential: admin.credential.cert(serviceAccount)
         });
         db = admin.firestore(); // Подменяем заглушку на боевой Firestore
         console.log("🔥 Firebase Firestore успешно инициализирован.");
@@ -38,6 +44,7 @@ if (process.env.FIREBASE_KEY_BASE64) {
         console.error("❌ Критическая ошибка инициализации Firebase:", err.message);
         process.exit(1);
     }
+
 } else {
     console.error("⚠️ Ошибка: Переменная FIREBASE_KEY_BASE64 отсутствует! Перехожу в режим заглушки.");
     // Резервная локальная заглушка на случай тестов без переменной
@@ -137,7 +144,8 @@ async function startAvitoAuth(uid, phone) {
         await p.setViewport({ width: 1280, height: 720 });
 
         // Легкая фильтрация медиа-трафика для экономии ОЗУ
-        await page.setRequestInterception(true);
+        await p.setRequestInterception(true);
+
         p.on('request', (req) => {
             const type = req.resourceType();
             if (['image', 'media', 'font'].includes(type)) {
@@ -522,7 +530,7 @@ if (!/^7\d{10}$/.test(text)) {
                 const ai = JSON.parse(comp.choices[0].message.content);
                 const est = Number(ai.estimatedPrice) || 0;
                 const trg = Number(ai.targetPrice) || 0;
-                const arg = ai.argument;
+                const arg = ai.argument || '';
                 const profit = est > trg ? est - trg : 0;
                 const comm = Math.round(0.3 * profit);
                 
