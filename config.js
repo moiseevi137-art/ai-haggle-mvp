@@ -2,7 +2,6 @@
 module.exports = {
   // Настройки для запуска Puppeteer, полностью оптимизированные под Amvera (1 ГБ ОЗУ)
   puppeteerOptions: {
-    // Автоматически берет путь из переменной или использует локальный Chrome из .puppeteerrc.cjs
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     headless: true, // В свежих версиях Puppeteer пишется true вместо 'new'
     args: [
@@ -18,8 +17,14 @@ module.exports = {
       
       // Динамический прокси-слой: если в Amvera задан PROXY_SERVER, он применится автоматически
       ...(process.env.PROXY_SERVER ? [`--proxy-server=${process.env.PROXY_SERVER}`] : []),
-      // Бронебойные правила резолва для прокси (если сервер указан)
-      ...(process.env.PROXY_SERVER ? ['--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE ' + new URL(process.env.PROXY_SERVER).hostname] : [])
+      // Бронебойные правила резолва для прокси с безопасной проверкой URL
+      ...(process.env.PROXY_SERVER ? (() => {
+        try {
+          return ['--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE ' + new URL(process.env.PROXY_SERVER).hostname];
+        } catch (e) {
+          return [];
+        }
+      })() : [])
     ]
   },
 
