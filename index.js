@@ -92,10 +92,8 @@ if (process.env.FIREBASE_KEY_BASE64) {
 }
 
 
-    } catch (e) {
-        console.error("Ошибка оптимизации страницы:", e.message);
-    }
-}
+    
+
 
 async function loadSession(page, uid) {
     try {
