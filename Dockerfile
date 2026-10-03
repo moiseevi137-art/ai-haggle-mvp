@@ -1,7 +1,7 @@
 # Используем официальный образ Node.js
 FROM node:20-slim
 
-# Устанавливаем ВСЕ необходимые системные библиотеки Linux для Chrome
+# Устанавливаем системные библиотеки Linux для Chrome
 RUN apt-get update && apt-get install -y \
     libnss3 \
     libatk1.0-0 \
@@ -25,11 +25,11 @@ WORKDIR /app
 # Копируем манифест зависимостей
 COPY package.json ./
 
-# Устанавливаем npm-пакеты
-RUN npm install
+# Устанавливаем npm-пакеты, игнорируя любые сломанные postinstall скрипты
+RUN npm install --ignore-scripts
 
-# Скачиваем Chrome для Puppeteer локально в кэш
-RUN npx puppeteer browsers install chrome
+# Принудительно очищаем кэш puppeteer и скачиваем чистую стабильную версию Chrome
+RUN npx puppeteer browsers clear && npx puppeteer browsers install chrome
 
 # Копируем остальные файлы проекта (index.js, index.html, .puppeteerrc.cjs)
 COPY . .
