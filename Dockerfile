@@ -1,8 +1,9 @@
 # Используем официальный легкий образ Node.js
 FROM node:20-slim
 
-# Устанавливаем системные библиотеки Linux для Chrome
+# Устанавливаем системные библиотеки Linux для Chrome + ОБЯЗАТЕЛЬНЫЙ unzip
 RUN apt-get update && apt-get install -y \
+    unzip \
     libnss3 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
