@@ -1,4 +1,4 @@
-# Используем официальный образ Node.js
+# Используем официальный легкий образ Node.js
 FROM node:20-slim
 
 # Устанавливаем системные библиотеки Linux для Chrome
@@ -25,17 +25,17 @@ WORKDIR /app
 # Копируем манифест зависимостей
 COPY package.json ./
 
-# Устанавливаем npm-пакеты, игнорируя любые сломанные postinstall скрипты
+# Устанавливаем npm-пакеты, игнорируя тяжелые postinstall скрипты при сборке
 RUN npm install --ignore-scripts
 
-# Принудительно очищаем кэш puppeteer и скачиваем чистую стабильную версию Chrome
-RUN npx puppeteer browsers clear && npx puppeteer browsers install chrome
-
-# Копируем остальные файлы проекта (index.js, index.html, .puppeteerrc.cjs)
+# Копируем остальные файлы проекта (index.js, index.html, .puppeteerrc.cjs, amvera.yml)
 COPY . .
+
+# Переменная окружения, указывающая Puppeteer использовать локальный кэш проекта
+ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
 
 # Открываем порт
 EXPOSE 10000
 
-# Запуск приложения
-CMD ["node", "index.js"]
+# Команда запуска: сначала быстро скачиваем/проверяем Chrome, затем сразу запускаем сервер
+CMD npx puppeteer browsers install chrome && node index.js
