@@ -30,20 +30,28 @@ let db;
 
 if (process.env.FIREBASE_KEY_BASE64) {
     try {
-        // Декодируем строку base64 сразу в JSON-объект, минуя жесткий диск
-        const serviceAccount = JSON.parse(Buffer.from(process.env.FIREBASE_KEY_BASE64, 'base64').toString('utf-8'));
-        console.log("✅ Ключ Firebase успешно декодирован из Base64 окружения!");
+        // ОЧИСТКА BASE64: Удаляем любые случайные переносы строк и пробелы
+        const cleanBase64 = process.env.FIREBASE_KEY_BASE64.replace(/[\s\n\r]/g, '');
+        
+        // Декодируем строку в UTF-8 текст
+        let jsonString = Buffer.from(cleanBase64, 'base64').toString('utf-8');
+        
+        // ВЫЧИЩАЕМ СКРЫТЫЕ СИМВОЛЫ: Убираем невидимые управляющие знаки, которые ломали парсер
+        jsonString = jsonString.replace(/[\u0000-\u001F\u007F-\u009F]/g, "");
+
+        const serviceAccount = JSON.parse(jsonString);
+        console.log("✅ Ключ Firebase успешно декодирован и очищен от спецсимволов!");
         
         admin.initializeApp({
-            // Передаем объект конфигурации напрямую в метод cert()
             credential: admin.credential.cert(serviceAccount)
         });
-        db = admin.firestore(); // Подменяем заглушку на боевой Firestore
+        db = admin.firestore();
         console.log("🔥 Firebase Firestore успешно инициализирован.");
     } catch (err) {
         console.error("❌ Критическая ошибка инициализации Firebase:", err.message);
         process.exit(1);
     }
+
 
 } else {
     console.error("⚠️ Ошибка: Переменная FIREBASE_KEY_BASE64 отсутствует! Перехожу в режим заглушки.");
