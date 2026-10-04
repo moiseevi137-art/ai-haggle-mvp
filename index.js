@@ -30,13 +30,16 @@ let db;
 
 if (process.env.FIREBASE_KEY_BASE64) {
     try {
-        // ОЧИСТКА BASE64: Удаляем любые случайные переносы строк и пробелы
+        // 1. ОЧИСТКА BASE64: Удаляем пробелы и переносы
         const cleanBase64 = process.env.FIREBASE_KEY_BASE64.replace(/[\s\n\r]/g, '');
         
-        // Декодируем строку в UTF-8 текст
+        // 2. Декодируем строку в UTF-8 текст
         let jsonString = Buffer.from(cleanBase64, 'base64').toString('utf-8');
         
-        // ВЫЧИЩАЕМ СКРЫТЫЕ СИМВОЛЫ: Убираем невидимые управляющие знаки, которые ломали парсер
+        // 3. ИСПРАВЛЕНИЕ ЭКРАНИРОВАНИЯ: Заменяем текстовые '\n' на реальные символы переноса строки
+        jsonString = jsonString.replace(/\\n/g, '\n');
+        
+        // 4. ВЫЧИЩАЕМ СКРЫТЫЕ СИМВОЛЫ: Убираем невидимые управляющие знаки
         jsonString = jsonString.replace(/[\u0000-\u001F\u007F-\u009F]/g, "");
 
         const serviceAccount = JSON.parse(jsonString);
@@ -51,6 +54,7 @@ if (process.env.FIREBASE_KEY_BASE64) {
         console.error("❌ Критическая ошибка инициализации Firebase:", err.message);
         process.exit(1);
     }
+
 
 
 } else {
