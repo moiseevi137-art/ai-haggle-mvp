@@ -7,6 +7,9 @@ const { Telegraf } = require('telegraf');
 const Bottleneck = require('bottleneck');
 const OpenAI = require('openai');
 
+// 🛡️ ПОДКЛЮЧАЕМ НАШ УСИЛЕННЫЙ МОДУЛЬ БЕЗОПАСНОСТИ АВИТО 2026
+const humanEmulation = require('./humanEmulation');
+
 // Глобальное и безопасное подключение Puppeteer Stealth (один раз на весь проект)
 const pt = require('puppeteer-extra');
 const st = require('puppeteer-extra-plugin-stealth');
@@ -172,37 +175,54 @@ async function startAvitoAuth(uid, phone) {
         await p.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
 
        // 1. Заходим на чистую главную страницу Авито
+        // 🛡️ Шаг А: Применяем маскировку железа и плагинов СТРОГО до перехода на сайт
+        await humanEmulation.applyAntiFingerprint(p);
+
+        // Заходим на чистую главную страницу Авито
         await p.goto('https://avito.ru', { waitUntil: 'networkidle2', timeout: 60000 });
-        await delay(2000);
 
-        // 2. ИСПРАВЛЕНО (Добавлено): Кликаем по кнопке "Вход и регистрация"
+        // 🛡️ Шаг Б: Вместо фиксированной паузы имитируем изучение главной страницы скроллингом
+        await humanEmulation.scrollPageWithBiometrics(p);
+
+
+        // 2. Кликаем по кнопке "Вход и регистрация"
         const loginBtnSel = '[data-marker="header/login-button"]';
-        await p.waitForSelector(loginBtnSel, { timeout: 15000 });
-        await p.click(loginBtnSel);
-        await delay(2000);
 
-        // 3. Ожидаем появление поля ввода номера и наводим фокус
-        const phoneSel = 'input[data-marker="login-form/phone"], input[type="tel"]';
-        await p.waitForSelector(phoneSel, { timeout: 15000 });
-        await p.focus(phoneSel);
+        // Ждем появления кнопки входа на странице
+        await p.waitForSelector(loginBtnSel, { timeout: 15000 });
+
+        // 🛡️ Шаг В: Плавно подводим курсор по кривой Безье и кликаем в случайную точку кнопки
+        await humanEmulation.moveAndClickSmart(p, loginBtnSel);
         
-        // 4. Имитируем человеческий ввод номера
-        await humanType(p, phoneSel, phone);
-        await delay(1500);
+        // Человеческая плавающая пауза, пока открывается окно авторизации
+        await humanEmulation.delay(1500, 2500);
+
+
+        // 3. Ожидаем появление поля ввода номера и вводим его
+        const phoneSel = 'input[data-marker="login-form/phone"], input[type="tel"]';
+
+        // 🛡️ Человеческий ввод номера телефона с защитой от детекции Авито (дубли удалены)
+        await humanEmulation.typeLikeHuman(p, phoneSel, phone);
+        await humanEmulation.delay(800, 1500);
+
 
         // 5. Кликаем по кнопке продолжения (универсальный селектор)
         const submitSel = 'button[data-marker="login-form/submit"], button[type="submit"], [data-marker="social-sharing/login-button"]';
         await p.waitForSelector(submitSel, { timeout: 5000 });
-        await p.click(submitSel);
         
-        await delay(5000);
+        // 🛡️ Шаг Г: Кликаем по кнопке "Продолжить" через умный клик Безье, а не мгновенным p.click
+        await humanEmulation.moveAndClickSmart(p, submitSel);
+        
+        // Ожидаем генерации СМС-кода со стороны Авито
+        await humanEmulation.delay(4000, 6000);
+
 
         // 6. Сохраняем сессию и выходим из функции
         browsers.set(String(uid), { browser: b, page: p });
         return true;
 
     } catch (e) {
-        await b.close();
+        if (b) await b.close();
         throw e;
     }
 }
