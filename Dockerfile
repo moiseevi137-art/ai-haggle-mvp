@@ -1,7 +1,7 @@
 # Используем официальный легкий образ Node.js
 FROM node:20-slim
 
-# Устанавливаем системные библиотеки Linux для Chrome + ОБЯЗАТЕЛЬНЫЙ unzip
+# Устанавливаем системные библиотеки Linux для Chrome + ОБЯЗАТЕЛЬНЫЙ unzip + libxfixes3
 RUN apt-get update && apt-get install -y \
     unzip \
     libnss3 \
@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     libxcomposite1 \
     libxdamage1 \
     libxext6 \
+    libxfixes3 \
     libxrandr2 \
     libgbm1 \
     libpango-1.0-0 \
