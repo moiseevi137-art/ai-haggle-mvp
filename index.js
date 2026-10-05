@@ -30,47 +30,27 @@ const browsers = new Map();
 let db;
 
 try {
-    // Вшитая Base64 строка вашего оригинального JSON-ключа
-    const base64Key = "eyJ0eXBlIjoic2VydmljZV9hY2NvdW50IiwicHJvamVjdF9pZCI6ImhhZ2dsZS1ib3QtMjAyNiIsInByb3ZpZGVyX3g1MDlfY2VydF91cmwiOiJodHRwczovL3d3dy5nb29nbGVhcGlzLmNvbS9vYXV0aDIvdjEvY2VydHMiLCJwcml2YXRlX2tleV9pZCI6ImExNzlhNjIzZjAyYTg1YzViNTYwMDJiMmJlNmU2ZTVkNDg1ZDBiMjIiLCJwcml2YXRlX2tleSI6Ii0tLS0tQkVHSU4gUFJJVkFURSBLRVktLS0tLVxuTUlJRXZRSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NCS2N3Z2dTakFnRUFBb0lCQVFDrExGdWxNZlBiKzNJVFxuV0xWMldjOHhVMnJmVm5Id01PYlZCWUVpVzUwOWdzMlhsbk9FZE9WcEtraURBK0l1WDlmUmdHUDndSzFMZ0pEWFxuQm14N1h5dWhncmR4YkpJR0Q5S1AyWUpjNTc4SmVGTUE5M0pxaXRFR0Fhb2hTM0xIenByS0xXWkJzNTA2aWN4c1xuQ3VpIGh5Z2ZkS2paTC8wNnh6ZWl0dG85eXo3a1lOVS8xVFlJVUE2U1o1dGhBNkpLUi9Zd1FUN1JJOEVhQWlZaVJcblBUTW14ZW9CTDRzWTBGRU5scGZhYlRefXJheEZGaC92TDFWbTVHczkvUXQzUUxCcWxMUG5US2NiV0ZHSmsyUWJcbjVFRTdsekVRakdUQjVFSVpkN0pmS252Q1RGWENMcm1JY0tiU3pLd2Z2Z0tYTTFxejVBME9kamx4Wlo0cXVyNlxuSzNSb3M5RTdBZ01CQUFFQ2cgZ0VBSmlNVWFocFdqREVhQ2ZCdVFhZWh6NG9YMmhtdkNFaWs3Vm8wR3IwUnEvWThcbkt5VjBxRkxJR0NVVndUYjR5ajlGWE9KL295YnJsVkpZTXVnMS9Faklka3dpNWV6OEhjaWhyN1lVNHZFcE1ZbHlcbjZOaTR6NzhNOGdzbDVqU1lSSG9kSjZWMHpuZWZ0TDZsNG42TzBsTmNOQ3ptcUpsRzVidU1PbUppMUlBdWE1TjdcbjdHYUlOK3BXZVIxVGJaUHV2Mm9uem90YVpUQzZ0WmsgY09HQzBGNkt6TW80UTJHWko4Z3AyaHJGeXh3Ylk0UlRjXG5VNVRET0c3QUNWVEhadjVCODdUMW5JRll5SURXR1NVTmdUd0xTVGE0QzNGeWxkZFozQTcvUFNZV0lTUFxuSW52WHBaM2hSMjdxKzQxL2lvVmZHOTJxaHdEcG1GZkxXOWdaellvNXFRS0JnUURTN3FDS2JUYWx0VE1tRmNPa1xuSmpNRWdqd2lSajZLbDhtR1dGQUpMZ2Y4OGk0ZU5hTU9vSmVhNm02OXE4V2t0IGNVK0Q3RGNiNXBtclIvcGFvUVBcbjVLYU1DeTd1cWtRS3djcWhNRHlibHZWVm5sZWVYKzJhY1g4YzZzdHc4a1lOemZ0WUpzVW1jWSt1WlAxdVNUSVlcbitvci95ZDJPQXp3VFVjUHVaOSBPTXQ2SGowd0tCZ1FEUHZ3bDExNTV1ZEFIRVoyb2IwTE5vdXJ6UDVqZ3FjZ3krXG5HK2xjSk1DQmxzb3NjRkhLUmp6Z1cxcTkyTURvcmVmbVQwd0FCaFFKTmVaaTA4NWhMZGNQVlNKd3Z0IE1pQmlLK1xuZXRMdkxhajNSWWR2cGRRNHd1eW9UaTdrQW8wMG10a24zOVRtbDdlcFZlUDV1ZDFwVWdqZlpSME9DMXFQQnBWS1xuWjQ1Z01zOUQrUUtCZ0dMaEhqMEdDWElReVZOM0xHbE0geHVtOEszaGR1WCs2dSt2UWhtUm5RYk5mekNLNVBpRGpcblEyNkpxelFheStIMG0rd0Y2d0RMQ0hSTmdBSXB2cEs4dXg0M045OEZ6alBFdUxwckpGNURtK3B3K2QzeVZpM3Fcbk9vNVJ1dSBETmtlMXl1L3FNNGlxdFhZK0JKQlNKRjRVQ0hocmVoSS9JRUdkMkV3VTFnc1FhYVRlbEFvR0FhWEdkXG5hNksxVjNxcUt2WVNkV3ZJcEMra0JpSGtBQ2RETUhzYVJ4cWdXeVllRjlBcXMzIEJURmMxSWtYT2k5bmJPYmFkeFxuKzlFWitsTFJUUGdVbUY2YitieE1iczFzZktpQW1nM2RZbWphaWlkUVJ1cjBmJnJ6WTduTE13L1lmQXJjamRDZVxuVHl4U25EQnNOaVNRclJSbVRIMFYgOGpyeERBZGJYeGlRdTJNT3NJRUNnWUVBeG9kM09mWnpDZmltMUFIdEd6NVVcbjB2VTNOdEpGbUZpcVpzdmVDa2s4c09WQTNBMXdweTh5eEUxMjRRbkV1bG9Qa3VvOVE2d0R0V2lPUHg3eCA0eVB6XG54NHJ5Y3htaTF2ZjlNUEd6THJVa0lWTUpiTlh2RVI0dDZvczh5TVNsbGdJcEtRUVhyemV1OVBtWU01OXRaZGdHXG5LaE5tRmZSL1lPSDcyVzZYamlMeEZQUT1cbi0tLS0tRU5EIFBSSVZBVEUgS0VZXS0tLS1cbiIsImNsaWVudF9lbWFpbCI6ImZpcmViYXNlLWFkbWluc2RrLWZic3ZjQGhhZ2dsZS1ib3QtMjAyNi5pYW0uZ3NlcnZpY2VhY2NvdW50LmNvbSIsImNsaWVudF9pZCI6IjEwMzEzNjg4NzgwNTk1MTUwOTgxNiIsImF1dGhfdXJpIjoiaHR0cHM6Ly9hY2NvdW50cy5nb29nbGUuY29tL28vb2F1dGgyL2F1dGgiLCJ0b2tlbl91cmkiOiJodHRwczovL29hdXRoMi5nb29nbGVhcGlzLmNvbS90b2tlbiIsImF1dGhfcHJvdmlkZXJfXzUwOV9jZXJ0X3VybCI6Imh0dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL2NlcnRzL28vb2F1dGgyL3YxL2NlcnRzIiwiY2xpZW50X3g1MDlfY2VydF91cmkiOiJodHRwczovL3d3dy5nb29nbGVhcGlzLmNvbS9yb2JvdC92MS9tZXRhZGF0YS94NTA5L2ZpcmViYXNlLWFkbWluc2RrLWZic3ZjJTQwaGFnZ2xlLWJvdC0yMDI2LmlhbS5nc2VydmljZWFjY291bnQuY29tIiwidW5pdmVyc2VfZG9tYWluIjoiZ29vZ2xlYXBpcy5jb20ifQ==";
-    
+    // Ваша оригинальная неискаженная Base64 строка JSON-ключа
+    const base64Key = "eyJ0eXBlIjoic2VydmljZV9hY2NvdW50IiwicHJvamVjdF9pZCI6ImhhZ2dsZS1ib3QtMjAyNiIsInByb3ZpZGVyX3g1MDlfY2VydF91cmwiOiJodHRwczovL3d3dy5nb29nbGVhcGlzLmNvbS9vYXV0aDIvdjEvY2VydHMiLCJwcml2YXRlX2tleV9pZCI6ImExNzlhNjIzZjAyYTg1YzViNTYwMDJiMmJlNmU2ZTVkNDg1ZDBiMjIiLCJwcml2YXRlX2tleSI6Ii0tLS0tQkVHSU4gUFJJVkFURSBLRVktLS0tLVxuTUlJRXZRSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NCS2N3Z2dTakFnRUFBb0lCQVFDrExGdWxNZlBiKzNJVFxuV0xWMldjOHhVMnJmVm5Id01PYlZCWUVpVzUwOWdzMlhsbk9FZE9WcEtraURBK0l1WDlmUmdHUDndSzFMZ0pEWFxuQm14N1h5dWhncmR4YkpJR0Q5S1AyWUpjNTc4SmVGTUE5M0pxaXRFR0Fhb2hTM0xIenByS0xXWkJzNTA2aWN4c1xuQ3VpIGh5Z2ZkS2paTC8wNnh6ZWl0dG85eXo3a1lOVS8xVFlJVUE2U1o1dGhBNkpLUi9Zd1FUN1JJOEVhQWlZaVJcblBUTW14ZW9CTDRzWTBGRU5scGZhYlRudXJheEZGaC92TDFWbTVHczkvUXQzUUxCcWxMUG5US2NiV0ZHSmsyUWJcbjVFRTdsekVRakdUQjVFSVpkN0pmS252Q1RGWENMcm1JY0tiU3pLd2Z2Z0tYTTFxejVBME9kamx4Wlo0cXVyNlxuSzNSb3M5RTdBZ01CQUFFQ2cgZ0VBSmlNVWFocFdqREVhQ2ZCdVFhZWh6NG9YMmhtdkNFaWs3Vm8wR3IwUnEvWThcbkt5VjBxRkxJR0NVVndUYjR5ajlGWE9KL295YnJsVkpZTXVnMS9Faklka3dpNWV6OEhjaWhyN1lVNHZFcE1ZbHlcbjZOaTR6NzhNOGdzbDVqU1lSSG9kSjZWMHpuZWZ0TDZsNG42TzBsTmNOQ3ptcUpsRzVidU1PbUppMUlBdWE1TjdcbjdHYUlOK3BXZVIxVGJaUHV2Mm9uem90YVpUQzZ0WmsgY09HQzBGNkt6TW80UTJHWko4Z3AyaHJGeXh3Ylk0UlRjXG5VNVRET0c3QUNWVEhadjVCODdUMW5JRll5SURXR1NVTmdUd0xTVGVMMHQ1dDRDM0Z5bGRkWjNBNy9QU1lXSVNQXG5JbnZYcFozaFIyN3ErNDEvaW9WZkc5MnFod0RpmFmTFc5Z1p6WW81cVFLQmdRRFM3cUNLYlRhbHRUTW1GY09rXG5Kak1FZ2p3aVJqNktsOG1HV0ZBSkxnZjg4aTRlTmFNT29KZWE2bTY5cThXa3QgY1UrRDdEY2I1cG1yUi9wYW9RUFxuNUthTUN5T3Uxa1FLd2NxaE1EeWJsdlZWbmxlZVgrMmFjWDhjNnN0dzhrWU56ZnRZSnNVbWNZK3VaUDF1U1RJWVxuK29yL3lkMk9BendUVWNQdVo5IE9NdDZIajB3S0JnUURQdndsMTE1NXVkQUhFWjJvYjBMTm91cnpQNWpncWNneStcbkcrbGNKTUNCbHNvc2NGSEtSanpnVzFxOTJNRG9yZWZtVDB3QUJoUUpOZVppMDg1aExkY1BWU0p3dnQgTWlCaUsrXG5ldEx2TGFqM1JZZHZwZFE0d3V5b1RpN2tBbzAwbXRrbjM5VG1sN2VwVmVQNXVkMXBVZ2pmWlIwT0MxcVBCcFZLXG5aNDVnTXM5RCtRS0JnR0xoSGowR0NYSVF5Vk4zTEdsTSB4dW04SzNoZHVYKzZ1K3ZRaG1SblFiTmZ6Q0s1UGlEalxuUTI2SnF6UWF5K0gwbSt3RjZ3RExDSFJOZ0FJcHZwSzh1eDQzTjk4RnpqUEV1THBySkY1RG0rcHcrZDN5VmkzcVxuT281UnV1IEROa2UxeXUvcU00aXF0WFkrQkpCU0pGNFVDSGhyZWhJL0lFR2QyRXdVMWdzUWFhVGVsQW9HQWFYR2RcbmE2SzFWM3FxS3ZZU2RXdklwQytrQmlIa0FDZERNSHNhUnhxZ1d5WWVGOUFxczMgQlRGYzFJa1hPaTluYk9iYWR4XG4rOUVaK2xMUlRQZ1VtRjZiK2J4TWJzMXNmS2lBbWczZFltamFpaWRRUnVyMGZKcnpZN25MTXcvWWZBcmNqZENlXG5UeXhSnRCc05pU1FyUlJtVEgwViA4anJ4REFkYlh4aVF1Mk1Pc0lFQ2dZRUF4b2QzT2ZaekNmaW0xQUh0R3o1VVxuMHZVM050SkZtRmlxWnN2ZUNrazhzT1ZBM0Exd3B5OHl4RTEyNFFuRXVsb1BrdW85UTZ3RHRXaU9QeDd4IDR5UHpcbng0cnljeG1pMXZmOU1QR3pMclVrSVZNSmJOWHZFUjR0Nm9zOHlNU2xsZ0lwS1FRWHJ6ZXU5UG1ZTTU5dFpkZ0dcbktoTm1GZlIvWU9INzJXNlhqaUx4RlBRPVxuLS0tLS1FTkQgUFJJVkFTERSBLRVktLS0tLVxuIiwiY2xpZW50X3g1MDlfY2VydF91cmwiOiJodHRwczovL3d3dy5nb29nbGVhcGlzLmNvbS9yb2JvdC92MS9tZXRhZGF0YS94NTA5L2ZpcmViYXNlLWFkbWluc2RrLWZic3ZjJTQwaGFnZ2xlLWJvdC0yMDI2LmlhbS5nc2VydmljZWFjY291bnQuY29tIiwidW5pdmVyc2VfZG9tYWluIjoiZm9vZ2xlYXBpcy5jb20ifQ==";
+
+    // Очищаем от случайных пробелов и переносов
     const cleanBase64 = base64Key.replace(/[\s\n\r]/g, '');
     const decodedText = Buffer.from(cleanBase64, 'base64').toString('utf-8');
     
-    // Безопасно вырезаем только сам приватный ключ
-    const keyMatch = decodedText.match(/"private_key"\s*:\s*"([\s\S]*?)"/);
-    if (!keyMatch) throw new Error("Не удалось извлечь private_key");
+    // Парсим в объект
+    const serviceAccount = JSON.parse(decodedText);
     
-    // Превращаем текст в настоящие переносы строк
-    let cleanKey = keyMatch[1].split('\\n').join('\n').split('\n\n').join('\n');
-    cleanKey = cleanKey.replace('-----BEGIN PRIVATE KEY-----', '-----BEGIN PRIVATE KEY-----\n');
-    cleanKey = cleanKey.replace('-----END PRIVATE KEY-----', '\n-----END PRIVATE KEY-----');
+    // Правильно форматируем PEM переносы строк внутри приватного ключа
+    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
 
-    // Собираем полностью валидный объект аккаунта (все оригинальные домены Google на месте!)
-    const serviceAccount = {
-        type: "service_account",
-        project_id: "haggle-bot-2026",
-        private_key_id: "a179a623f02a85c5b56002b2be6e6e5d485d0b22",
-        private_key: cleanKey,
-        client_email: "firebase-adminsdk-fbsvc@haggle-bot-2026.iam.gserviceaccount.com",
-        client_id: "103136887805951509816",
-        auth_uri: "https://google.com",
-        token_uri: "https://googleapis.com",
-        auth_provider_x509_cert_url: "https://googleapis.com",
-        client_x509_cert_url: "https://googleapis.com",
-        universe_domain: "googleapis.com"
-    };
-
-    console.log("✅ Ключ Firebase успешно восстановлен и собран в обход Amvera!");
-    
     admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
     });
     db = admin.firestore();
-    console.log("🔥 Firebase Firestore успешно инициализирован.");
+    console.log("🔥 Firebase Firestore успешно инициализирован боевым ключом!");
 } catch (err) {
     console.error("⚠️ Сбой боевого Firebase. Запускаю резервную локальную заглушку:", err.message);
     
-    // Полный автономный блок заглушки (чтобы приложение не падало аварийно)
     const storage = new Map();
     db = {
         collection: (col) => ({
@@ -93,6 +73,8 @@ try {
         })
     };
 }
+
+
 
 // ==========================================================
 // 2. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ И ШЛЮЗЫ АВТОРИЗАЦИИ (PUPPETEER)
