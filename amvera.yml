@@ -8,4 +8,11 @@ build:
 
 run:
   containerPort: 10000
-  command: node index.js & sleep 3 && ssh -o StrictHostKeyChecking=no -p 443 -R0:localhost:10000 tcp@pinggy.io
+  command: |
+    (while true; do 
+      echo "=== Запуск туннеля Pinggy ==="; 
+      ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -p 443 -R0:localhost:10000 tcp@free.pinggy.online; 
+      echo "=== Переподключение туннеля через 5 секунд... ==="; 
+      sleep 5; 
+    done) & 
+    node index.js
