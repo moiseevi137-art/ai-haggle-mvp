@@ -1,9 +1,10 @@
 # Используем официальный легкий образ Node.js
 FROM node:20-slim
 
-# Устанавливаем системные библиотеки Linux для Chrome + ОБЯЗАТЕЛЬНЫЙ unzip + libxfixes3
+# Устанавливаем системные библиотеки Linux для Chrome + ОБЯЗАТЕЛЬНЫЙ unzip + libxfixes3 + openssh-client
 RUN apt-get update && apt-get install -y \
     unzip \
+    openssh-client \
     libnss3 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
