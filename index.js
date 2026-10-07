@@ -6,9 +6,7 @@ const admin = require('firebase-admin');
 const { Telegraf } = require('telegraf');
 const Bottleneck = require('bottleneck');
 const OpenAI = require('openai');
-
-// 🛡️ ПОДКЛЮЧАЕМ НАШ УСИЛЕННЫЙ МОДУЛЬ БЕЗОПАСНОСТИ АВИТО 2026
-const humanEmulation = require('./humanEmulation');
+const { spawn } = require('child_process'); // ✅ Внедрено: для управления SSH-процессом Pinggy
 
 // Глобальное и безопасное подключение Puppeteer Stealth (один раз на весь проект)
 const pt = require('puppeteer-extra');
@@ -28,32 +26,37 @@ const browsers = new Map();
 
 
 // ==========================================================
-// 1. ИНИЦИАЛИЗАЦИЯ НАСТОЯЩЕЙ БАЗЫ ДАННЫХ FIREBASE (ВШИТЫЙ КЛЮЧ)
+// 1. ИНИЦИАЛИЗАЦИЯ НАСТОЯЩЕЙ БАЗЫ ДАННЫХ FIREBASE ИЗ BASE64
 // ==========================================================
 let db;
 
-try {
-    // Полностью восстановленная, чистая и проверенная Base64 строка вашего JSON-ключа Firebase
-    const base64Key = "ewogICJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsCiAgInByb2plY3RfaWQiOiAiaGFnZ2xlLWJvdC0yMDI2IiwKICAicHJpdmF0ZV9rZXlfaWQiOiAiYTE3OWE2MjNmMDJhODVjNWI1NjAwMmIyYmU2ZTZlNWQ0ODVkMGIyMiIsCiAgInByaXZhdGVfa2V5IjogIi0tLS0tQkVHSU4gUFJJVkFURSBLRVktLS0tLVxuTUlJRXZRSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NCS2N3Z2dTakFnRUFBb0lCQVFDckxGdWxNZlBiKzNJVFxuV0xWMldjOHhVMnJmVm5Jd01PYlZCWUVpVzUwOWdzMlhsbk9FZE9WcEsraURBK0l1WDlmUmdHUDJ3SzFMZ0pEWFxuQm14N1h5dWhncmR4YkpJR0Q5S1AyWUpjNTc4SmVGTUE5M0pxaXRFR0Fhb2gzU0xoenByS0xXWkJzNTA2aWN4c1xuQ3UyaCtnZmRLalRaLzA2eHplaTd0bzl5ejdrWU5VLzFVWUlVQTZTWjV0aEE2SktSL1l3UVQ3Ukk4RWFBaVlpUlxuUFRNbXhlb0JMNHNZMEZlTmxwZmFiVG5yYXJ4RkZoL3ZMMVZtNUdzOS9RdDNRTEJxbExQblRLY2JXRkdKazJRYlxuNUVFN2x6RVFqR1RCNUVJWmQ3SmZLbnZDVEZYQ0xybUljQmtiU3pLd2Z2Z0tYTTFxejVBME9kamx4Wlo0cXVyNlxuSzNSb3M5RTdBZ01CQUFFQ2dnRUFKaU1VYWhwV2pERWFDZkJ1UWFlaHo0b1gyaG12Q0VpazdWbzBHcjBScS9ZOFxuS3lWMHFGTEpHQ1VWd1RiNHlqOUZYT0ovb3licmxWSllNdWcxL0VqSWRrd2k1ZXo4SGNpaHI3WVU0dkVwTVlseVxuNk5pNHo3OE04Z3NsNWpTWVJIb2RKNlYwem5lZnRMNmw0bjZPMGxOY05Dem1xSmxHNWJ1TU9tSmkxSUF1YTVON1xuN0dhSU4rcFdlUjFUYlpQdXYyb256b3RhWlRDNnRaa2NPR0MwRjZLek1vNFEyR1pKOGdwMmhyRnl4d2JZNFJUY1xuVTVURE9HN0FDVlRIWnY1Qjg3VDFuSUZZeUlEV0dTVU5nVHdMU1RlTDB0NXQ0QzNGeWxkZFozQTcvUFNZV0lTUFxuSW52WHBaM2hSMjdxKzQxL2lvVmZHOTJxaHdEcG1GZkxXOWdaellvNXFRS0JnUURTN3FDS2JUYWx0VE1tRmNPa1xuSmpNRWdqd2lSajZLbDhtR1dGQUpMZ2Y4OGk0ZU5hTU9vSmVhNm02OXE4V2t0Y1UrRDdEY2I1cG1yUi9wYW9RUFxuNUthTUN5N3Vxa1FLd2NxaE1EeWJsdlZWbmxlZVgrMmFjWDhjNnN0dzhrWU56ZnRZSnNVbWNZK3VaUDF1U1RJWVxuK29yL3lkMk9BendUVWNQdVo5T010NkhqMHdLQmdRRFB2d2wxMTU1dWRBSEVaMm9iMExOb3VyelA1amdxY2d5K1xuRytsY0pNQ0Jsc29zY0ZIS1JqemdXMXE5Mk1Eb3JlZm1UMHdBQmhRSk5lWmkwODVoTGRjUFZTSnd2dE1pQmlLK1xuZXRMdkxhajNSWWR2cGRRNHd1eW9UaTdrQW8wMG10a24zOVRtbDdlcFZlUDV1ZDFwVWdqZlpSME9DMXFQQnBWS1xuWjQ1Z01zOUQrUUtCZ0dMaEhqMEdDWElReVZOM0xHbE14dW04SzNoZHVYKzZ1K3ZRaG1SblFiTmZ6Q0s1UGlEalxuUTI2SnF6UWF5K0gwbSt3RjZ3RExDSFJOZ0FJcHZwSzh1eDQzTjk4RnpqUEV1THBySkY1RG0rcHcrZDN5VmkzcVxuT281UnV1RE5rZTF5dS9xTTRpcXRYWStCSkJTSkY0VUNIaHJlaEkvSUVHZDJFd1UxZ3NRYWFUZWxBb0dBYVhHZFxuYTZLMVYzcXFLdllTZFd2SXBDK2tCaUhrQUNkRE1Ic2FSeHFnV3lZZUY5QXFzM0JURmMxSWtYT2k5bmJPYmFkeFxuKzlFWitsTFJUUGdVbUY2YitieE1iczFzZktpQW1nM2RZbWphaWlkUVJ1cjBmSnJ6WTduTE13L1lmQXJjamRDZVxuVHl4U25EQnNOaVNRclJSbVRIMFY4anJ4REFkYlh4aVF1Mk1Pc0lFQ2dZRUF4b2QzT2ZaekNmaW0xQUh0R3o1VVxuMHZVM050SkZtRmlxWnN2ZUNrazhzT1ZBM0Exd3B5OHl4RTEyNFFuRXVsb1BrdW85UTZ3RHRXaU9QeDd4NHlQelxueDRyeWN4bWkxdmY5TVBHekxyVWtJVk1KYk5YdkVSNHQ2b3M4eU1TbGxnSXBLUVFYcnpldTlQbVlNNTl0WmRnR1xuS2hObUZmUi9ZT0g3Mlc2WGppTHhGUFE9XG4tLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tXG4iLAogICJjbGllbnRfZW1haWwiOiAiZmlyZWJhc2UtYWRtaW5zZGstZmJzdmNAaGFnZ2xlLWJvdC0yMDI2LmlhbS5nc2VydmljZWFjY291bnQuY29tIiwKICAiY2xpZW50X2lkIjogIjEwMzEzNjg4NzgwNTk1MTUwOTgxNiIsCiAgImF1dGhfdXJpIjogImh0dHBzOi8vYWNjb3VudHMuZ29vZ2xlLmNvbS9vL29hdXRoMi9hdXRoIiwKICAidG9rZW5fdXJpIjogImh0dHBzOi8vb2F1dGgyLmdvb2dsZWFwaXMuY29tL3Rva2VuIiwKICAiYXV0aF9wcm92aWRlcl94NTA5X2NlcnRfdXJsIjogImh0dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL29hdXRoMi92MS9jZXJ0cyIsCiAgImNsaWVudF94NTA5X2NlcnRfdXJsIjogImh0dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL3JvYm90L3YxL21ldGFkYXRhL3g1MDkvZmlyZWJhc2UtYWRtaW5zZGstZmJzdmMlNDBoYWdnbGUtYm90LTIwMjYuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLAogICJ1bml2ZXJzZV9kb21haW4iOiAiZ29vZ2xlYXBpcy5jb20iCn0K==";
+if (process.env.FIREBASE_KEY_BASE64) {
+    try {
+        // ОЧИСТКА BASE64: Удаляем любые случайные переносы строк и пробелы
+        const cleanBase64 = process.env.FIREBASE_KEY_BASE64.replace(/[\s\n\(\r\)]/g, '');
+        
+        // Декодируем строку в UTF-8 текст
+        let jsonString = Buffer.from(cleanBase64, 'base64').toString('utf-8');
+        
+        // ВЫЧИЩАЕМ СКРЫТЫЕ СИМВОЛЫ: Убираем невидимые управляющие знаки, которые ломали парсер
+        jsonString = jsonString.replace(/[\u0000-\u001F\u007F-\u009F]/g, "");
 
-    // Автоматическая программная очистка от любых скрытых символов
-    const cleanBase64 = base64Key.replace(/[^\x20-\x7E]/g, '').trim();
-    const decodedText = Buffer.from(cleanBase64, 'base64').toString('utf-8');
-    
-    // Парсим полностью валидный JSON
-    const serviceAccount = JSON.parse(decodedText);
-    
-    // Форматируем PEM-переносы
-    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+        const serviceAccount = JSON.parse(jsonString);
+        console.log("✅ Ключ Firebase успешно декодирован и очищен от спецсимволов!");
+        
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount)
+        });
+        db = admin.firestore();
+        console.log("🔥 Firebase Firestore успешно инициализирован.");
+    } catch (err) {
+        console.error("❌ Критическая ошибка инициализации Firebase:", err.message);
+        process.exit(1);
+    }
 
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-    });
-    db = admin.firestore();
-    console.log("🔥 Firebase Firestore успешно инициализирован боевым ключом!");
-} catch (err) {
-    console.error("⚠️ Сбой боевого Firebase. Запускаю резервную локальную заглушку:", err.message);
-    
+} else {
+    console.error("⚠️ Ошибка: Переменная FIREBASE_KEY_BASE64 отсутствует! Перехожу в режим заглушки.");
+    // Резервная локальная заглушка на случай тестов без переменной
     const storage = new Map();
     db = {
         collection: (col) => ({
@@ -76,6 +79,61 @@ try {
         })
     };
 }
+
+
+// ==========================================================
+// 1.5 АВТОМАТИЧЕСКИЙ ПЕРЕХВАТ И ОБНОВЛЕНИЕ ТУННЕЛЯ PINGGY
+// ==========================================================
+function startPinggyTunnel(botInstance) {
+    const adminId = process.env.ADMIN_TELEGRAM_ID;
+    if (!adminId) {
+        console.error("⚠️ Переменная ADMIN_TELEGRAM_ID не задана в Amvera! Ссылки туннеля не смогут отправиться в Telegram.");
+    }
+
+    console.log('[Pinggy] Запуск процесса SSH-туннелирования...');
+
+    // Запускаем нативный SSH к актуальному бесплатному серверу Pinggy
+    const pinggy = spawn('ssh', [
+        '-o', 'StrictHostKeyChecking=no',
+        '-o', 'ServerAliveInterval=30',
+        '-p', '443',
+        '-R', '0:localhost:10000',
+        'tcp@free.pinggy.online'
+    ]);
+
+    // Парсим логи Pinggy в режиме реального времени
+    pinggy.stdout.on('data', (data) => {
+        const output = data.toString();
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        const matches = output.match(urlRegex);
+
+        if (matches && adminId) {
+            // Ищем именно https-версию линка среди вывода
+            const secureUrl = matches.find(url => url.startsWith('https://')) || matches[0];
+            
+            const message = `🌐 *Новый туннель Pinggy запущен!*\n\n` +
+                            `🔗 Адрес мобильного фронтенда:\n\`\${secureUrl}\`\n\n` +
+                            `⚠️ Лимит бесплатной сессии: 60 минут. Бот автоматически переподключится и пришлет новый URL.`;
+            
+            console.log(`[Pinggy] Обнаружен рабочий URL: ${secureUrl}`);
+
+            // Отправляем пуш-сообщение администратору
+            botInstance.telegram.sendMessage(adminId, message, { parse_mode: 'Markdown' })
+                .catch(err => console.error('[Telegram] Не удалось отправить ссылку админу:', err.message));
+        }
+    });
+
+    pinggy.on('error', (err) => {
+        console.error('[Pinggy] Ошибка выполнения SSH! Проверьте, добавлен ли openssh-client в Dockerfile:', err.message);
+    });
+
+    // Обработка закрытия туннеля (авто-сброс раз в час от Pinggy или сетевой сбой)
+    pinggy.on('close', (code) => {
+        console.log(`[Pinggy] Соединение разорвано (код ${code}). Переподключение через 5 секунд...`);
+        setTimeout(() => startPinggyTunnel(botInstance), 5000);
+    });
+}
+
 
 
 
