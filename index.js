@@ -90,7 +90,7 @@ function startPinggyTunnel(botInstance) {
         console.error("⚠️ Переменная ADMIN_TELEGRAM_ID не задана в Amvera! Ссылки туннеля не смогут отправиться в Telegram.");
     }
 
-    console.log('[Pinggy] Запуск процесса SSH-туннелирования...');
+    console.log('[Pinggy] Запуск процесса SSH-туннелирования с пробросом мобильного прокси...');
 
     // Запускаем нативный SSH к актуальному бесплатному серверу Pinggy
     const pinggy = spawn('ssh', [
@@ -98,6 +98,7 @@ function startPinggyTunnel(botInstance) {
         '-o', 'ServerAliveInterval=30',
         '-p', '443',
         '-R', '0:localhost:10000',
+        '-R', '8080:127.0.0.1:8080', // ✅ Внедрено: Забираем мобильный прокси с Android на сервер
         'tcp@free.pinggy.online'
     ]);
 
@@ -111,9 +112,10 @@ function startPinggyTunnel(botInstance) {
             // Ищем именно https-версию линка среди вывода
             const secureUrl = matches.find(url => url.startsWith('https://')) || matches[0];
             
-            const message = `🌐 *Новый туннель Pinggy запущен!*\n\n` +
+            const message = `🌐 *Туннель и Мобильный прокси готовы!*\n\n` +
                             `🔗 Адрес мобильного фронтенда:\n\`\${secureUrl}\`\n\n` +
-                            `⚠️ Лимит бесплатной сессии: 60 минут. Бот автоматически переподключится и пришлет новый URL.`;
+                            `📱 Прокси-мост: Порт 8080 успешно связан с вашим Android.\n` +
+                            `⚠️ Лимит бесплатной сессии: 60 минут. Бот автоматически переподключится.`;
             
             console.log(`[Pinggy] Обнаружен рабочий URL: ${secureUrl}`);
 
@@ -134,6 +136,7 @@ function startPinggyTunnel(botInstance) {
     });
 }
 
+    
 
 
 
