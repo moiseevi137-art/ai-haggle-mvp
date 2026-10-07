@@ -1,4 +1,4 @@
-require('dotenv').config();
+хrequire('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
@@ -645,8 +645,13 @@ if (!/^7\d{10}$/.test(text)) {
 
 
     bot.launch()
-        .then(() => console.log('🤖 Бот успешно запущен на Amvera в режиме Long Polling!'))
-        .catch(err => console.error('❌ Фатальная ошибка старта Telegraf:', err.message));
+    .then(() => {
+        console.log('🤖 Бот успешно запущен на Amvera в режиме Long Polling!');
+        
+        // ✅ Внедрено: Запуск автоматического туннеля Pinggy
+        startPinggyTunnel(bot); 
+    })
+    .catch(err => console.error('❌ Фатальная ошибка старта Telegraf:', err.message));
 
     process.once('SIGINT', () => bot.stop('SIGINT'));
     process.once('SIGTERM', () => bot.stop('SIGTERM'));
