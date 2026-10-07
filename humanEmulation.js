@@ -134,21 +134,22 @@ async function applyAntiFingerprint(page) {
       }
     });
 
-    // 3. Маскировка серверной видеокарты под стандартный клиентский ПК
+    // 3. Подмена языков и локали (чтобы сервер Linux не выдавал себя)
+    Object.defineProperty(navigator, 'languages', { get: () => ['ru-RU', 'ru', 'en-US', 'en'] });
+
+    // 4. Эмуляция WebGL домашнего ПК (Маскируем Intel Iris Xe Graphics вместо программного рендера SwiftShader)
     const getParameter = WebGLRenderingContext.prototype.getParameter;
     WebGLRenderingContext.prototype.getParameter = function(parameter) {
       // UNMASKED_VENDOR_WEBGL
-      if (parameter === 37445) return 'Intel Inc.';
+      if (parameter === 37445) return 'Intel Open Source Technology Center';
       // UNMASKED_RENDERER_WEBGL
-      if (parameter === 37446) return 'Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0';
+      if (parameter === 37446) return 'Intel(R) Iris(R) Xe Graphics (TGL GT2)';
       return getParameter.apply(this, arguments);
     };
-
-    // 4. Защита языковых настроек и таймзоны
-    Object.defineProperty(navigator, 'languages', { get: () => ['ru-RU', 'ru'] });
   });
 }
 
+// ✅ Экспортируем все функции для использования в index.js
 module.exports = {
   delay,
   typeLikeHuman,
