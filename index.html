@@ -3,15 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI-Haggle: Торг</title>
+    <title>AI-Haggle: Пульт Управления</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f4f5f7; margin: 0; padding: 20px; display: flex; justify-content: center; }
-        .chat-container { width: 100%; max-width: 450px; background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; height: 80vh; overflow: hidden; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f4f5f7; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; box-sizing: border-box; }
+        .chat-container { width: 100%; max-width: 450px; background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; height: 85vh; overflow: hidden; }
         .chat-header { background: #00AAFF; color: white; padding: 15px; font-weight: bold; text-align: center; font-size: 18px; }
+        
+        /* Стили новой панели СМС-авторизации */
+        .auth-panel { background: #fffcf0; border-bottom: 2px solid #ffeeba; padding: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+        .auth-row { display: flex; gap: 8px; }
+        .auth-input { flex: 1; padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; outline: none; font-size: 14px; }
+        .auth-btn { background: #ff5c5c; color: white; border: none; padding: 8px 14px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 13px; }
+        .auth-btn.sms { background: #00cc66; }
+        
         .messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
         .msg { max-width: 75%; padding: 10px 14px; border-radius: 15px; font-size: 15px; line-height: 1.4; }
         .user { background: #00AAFF; color: white; align-self: flex-end; border-bottom-right-radius: 2px; }
         .bot { background: #f0f2f5; color: #1c1e21; align-self: flex-start; border-bottom-left-radius: 2px; }
+        .system { background: #fff5f5; color: #cc0000; align-self: center; border-radius: 6px; font-size: 13px; text-align: center; max-width: 90%; }
+        
         .input-area { display: flex; padding: 10px; border-top: 1px solid #eee; background: #fff; }
         .input-area input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 20px; outline: none; font-size: 15px; }
         .input-area button { background: #00AAFF; color: white; border: none; padding: 0 20px; margin-left: 8px; border-radius: 20px; font-weight: bold; cursor: pointer; }
@@ -20,10 +30,24 @@
 <body>
 
 <div class="chat-container">
-    <div class="chat-header">Переговорщик AI-Haggle</div>
+    <div class="chat-header">Переговорщик AI-Haggle PRO</div>
+    
+    <!-- 🔐 ВНЕДРЕНО: Модуль интерактивного моста авторизации Авито -->
+    <div class="auth-panel" id="auth-panel">
+        <div class="auth-row">
+            <input type="tel" id="phone-input" class="auth-input" placeholder="79991234567" value="7">
+            <button class="auth-btn" onclick="sendPhone()">Вход Авито</button>
+        </div>
+        <div class="auth-row" id="sms-row" style="display: none;">
+            <input type="number" id="sms-input" class="auth-input" placeholder="Код из СМС">
+            <button class="auth-btn sms" onclick="sendSMS()">Подтвердить</button>
+        </div>
+    </div>
+
     <div class="messages" id="chat-messages">
         <div class="msg bot">Привет! По поводу объявления. Какую цену предложите?</div>
     </div>
+    
     <div class="input-area">
         <input type="text" id="user-input" placeholder="Напишите вашу цену..." onkeypress="handleKey(event)">
         <button onclick="sendMessage()">➡️</button>
@@ -32,18 +56,71 @@
 
 <script>
     let currentWave = 1;
-    const itemPrice = 5000; // Стартовая цена товара для теста
+    const itemPrice = 5000; 
     const userId = "test-user-" + Math.random().toString(36).substring(7);
 
     function appendMessage(text, sender) {
         const msgDiv = document.createElement('div');
-        msgDiv.className = `msg ${sender}`;
+        msgDiv.className = `msg \${sender}`;
         msgDiv.innerText = text;
         const container = document.getElementById('chat-messages');
         container.appendChild(msgDiv);
         container.scrollTop = container.scrollHeight;
     }
 
+    // 🚀 1. ОТПРАВКА НОМЕРА ТЕЛЕФОНА В INDEX.JS ДЛЯ СТАРТА PUPPETEER
+    async function sendPhone() {
+        const phone = document.getElementById('phone-input').value.trim();
+        if (!phone || phone === '7') return alert('Введите корректный номер телефона!');
+        
+        appendMessage(`Система: Отправка номера ${phone} для инициализации Авито...`, 'system');
+        
+        try {
+            const response = await fetch('/api/auth/phone', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, phone })
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                appendMessage('Система: Номер принят. Ожидаем СМС-код от Авито...', 'system');
+                document.getElementById('sms-row').style.display = 'flex'; // Показываем поле ввода СМС
+            } else {
+                appendMessage(`Ошибка: ${data.error}`, 'system');
+            }
+        } catch (error) {
+            appendMessage('Ошибка инициализации телефона на сервере.', 'system');
+        }
+    }
+
+    // 🔑 2. ОТПРАВКА СМС-КОДА ДЛЯ ЗАВЕРШЕНИЯ АВТОРИЗАЦИИ
+    async function sendSMS() {
+        const code = document.getElementById('sms-input').value.trim();
+        if (!code) return alert('Введите код!');
+        
+        appendMessage(`Система: Передача кода ${code} в модуль humanEmulation...`, 'system');
+        
+        try {
+            const response = await fetch('/api/auth/sms', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, code })
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                appendMessage('✅ Авторизация успешна! Модуль защиты полностью замаскировал браузер.', 'system');
+                document.getElementById('auth-panel').style.style.display = 'none'; // Прячем панель за ненадобностью
+            } else {
+                appendMessage(`Ошибка СМС: ${data.error}`, 'system');
+            }
+        } catch (error) {
+            appendMessage('Ошибка передачи СМС на сервер.', 'system');
+        }
+    }
+
+    // 💬 3. СТАНДАРТНЫЙ МЕХАНИЗМ ТОРГА (ВАШ ОРИГИНАЛЬНЫЙ КОД)
     async function sendMessage() {
         const input = document.getElementById('user-input');
         const text = input.value.trim();
@@ -53,7 +130,6 @@
         input.value = '';
 
         try {
-            // Запрос идет на тот же сервер Amvera, где крутится наш index.js
             const response = await fetch('/api/negotiate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -62,7 +138,7 @@
             
             const data = await response.json();
             appendMessage(data.text, 'bot');
-            currentWave = data.nextWave; // Запоминаем текущую волну торга
+            currentWave = data.nextWave; 
         } catch (error) {
             console.error('Ошибка:', error);
             appendMessage('Ошибка связи с сервером AI.', 'bot');
