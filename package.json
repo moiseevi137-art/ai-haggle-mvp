@@ -6,6 +6,9 @@
   "scripts": {
     "start": "node index.js"
   },
+  "config": {
+    "puppeteer_skip_chromium_download": "true"
+  },
   "dependencies": {
     "bottleneck": "^2.19.5",
     "express": "^4.19.2",
