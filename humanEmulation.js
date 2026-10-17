@@ -3,7 +3,7 @@
  * Безопасность: Максимальная (Уровень маскировки под реальный смартфон/ПК РФ)
  */
 
-const delay = (min, max) => {
+const delay = (min, max = min) => {
   const ms = Math.floor(Math.random() * (max - min + 1)) + min;
   return new Promise(resolve => setTimeout(resolve, ms));
 };
@@ -155,5 +155,6 @@ module.exports = {
   typeLikeHuman,
   scrollPageWithBiometrics,
   moveAndClickSmart,
-  applyAntiFingerprint
+  applyAntiFingerprint,humanType: typeLikeHuman,
+humanScroll: scrollPageWithBiometrics,
 };
