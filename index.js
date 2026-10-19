@@ -1,4 +1,4 @@
-хrequire('dotenv').config();
+require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
@@ -6,12 +6,12 @@ const admin = require('firebase-admin');
 const { Telegraf } = require('telegraf');
 const Bottleneck = require('bottleneck');
 const OpenAI = require('openai');
-const { spawn } = require('child_process'); // ✅ Внедрено: для управления SSH-процессом Pinggy
+// ✂️ Строка child_process (Pinggy) УДАЛЕНА
 
-// Глобальное и безопасное подключение Puppeteer Stealth (один раз на весь проект)
+// ✅ Глобальное и безопасное подключение Puppeteer Stealth
 const pt = require('puppeteer-extra');
 const st = require('puppeteer-extra-plugin-stealth');
-if (pt.plugins?.length === 0) pt.use(st());
+pt.use(st());
 
 const app = express();
 app.use(express.json());
@@ -20,9 +20,15 @@ const PORT = process.env.PORT || 10000;
 
 console.log('⚡️ Режим AI HAGGLE PRO!');
 
+// ✅ ДОБАВЛЕНО: Глобальный лимитер для контроля памяти в Amvera/Docker (maxConcurrent: 1)
+const puppeteerLimiter = new Bottleneck({
+  maxConcurrent: 1
+});
+
 // Глобальные коллекции состояний (в оперативной памяти)
 const userStates = new Map();
 const browsers = new Map();
+
 
 
 // ==========================================================
@@ -593,13 +599,13 @@ if (!/^7\d{10}$/.test(text)) {
         }
 
 
-    // ✅ ИСПРАВЛЕНО: Бот реагирует только на валидные ссылки, содержащие avito.ru
+    
+        // ✅ ОСТАВЛЯЕМ БЕЗ ИЗМЕНЕНИЙ: Бот реагирует только на валидные ссылки, содержащие avito.ru
         if ((text.includes('http://') || text.includes('https://')) && text.includes('avito.ru')) {
             const check = await db.collection('user_sessions').doc(uid).get();
             if (!check.exists) return ctx.reply('⚠️ Защищенный шлюз закрыт. Сначала авторизуйте Авито.');
             await ctx.reply('⏳ Запускаю нейросетевой скоринг карточки товара через DeepSeek...');
 
-            
             try {
                 const comp = await openai.chat.completions.create({
                     model: 'deepseek-chat',
@@ -613,7 +619,6 @@ if (!/^7\d{10}$/.test(text)) {
                     response_format: { type: 'json_object' }
                 });
 
-                
                 const ai = JSON.parse(comp.choices[0].message.content);
                 const est = Number(ai.estimatedPrice) || 0;
                 const trg = Number(ai.targetPrice) || 0;
@@ -632,7 +637,7 @@ if (!/^7\d{10}$/.test(text)) {
                 });
                 
                await ctx.reply(`📋 <b>ОТЧЁТ ОБ АНАЛИЗЕ СДЕЛКИ</b>\n──────────────────────\n💰 <b>Исходная цена:</b> ${est} ₽\n🎯 <b>Целевая цена торга:</b> ${trg} ₽\n📈 <b>Прогнозируемая выгода:</b> ${profit} ₽\n💸 <b>Сервисный сбор (30%):</b> ${comm} ₽\n──────────────────────\n\n🤖 <b>Стратегия торга от DeepSeek:</b>\n<i>"${arg.replace(/</g, '&lt;').replace(/>/g, '&gt;')}"</i>\n\n👇 <i>Готовы запустить робота в чат Авито?</i>`, {
-                    parse_mode: 'HTML', // ✅ ИСПРАВЛЕНО: Безопасный HTML-режим
+                    parse_mode: 'HTML',
                     reply_markup: { 
                         inline_keyboard: [[{ text: '🚀 Отправить предложение продавцу', callback_data: `send_bid_${bidRef.id}` }]] 
                     }
@@ -646,13 +651,36 @@ if (!/^7\d{10}$/.test(text)) {
         }
     });
 
+    // ==========================================================
+    // ✅ ВНЕДРЕНО: Обработчик клика по кнопке "Отправить предложение"
+    // ==========================================================
+    bot.action(/^send_bid_(.+)$/, async (ctx) => {
+        const bidId = ctx.match[1];
+        await ctx.answerCbQuery('Запрос добавлен в пул памяти...');
+        await ctx.reply('⏳ Робот ожидает своей очереди в пуле памяти Amvera...');
 
+        // Запуск через глобальный изолированный лимитер (maxConcurrent: 1)
+        puppeteerLimiter.schedule(async () => {
+            try {
+                await ctx.reply('🚀 Очередь освободилась. Запускаю эмуляцию браузера и отправляю предложение в чат...');
+                
+                // Вызов вашей основной функции автоматизации Puppeteer
+                await твоя_функция_торга(bidId, ctx); 
+                
+            } catch (error) {
+                console.error("Ошибка в процессе автоматического торга:", error);
+                await ctx.reply(`❌ Робот не смог отправить предложение: ${error.message}`);
+            }
+        });
+    });
+
+    // ==========================================================
+    // 3. ЗАПУСК БОТА (ИСПРАВЛЕНО: БЕЗ PINGGY ДЛЯ AMVERA)
+    // ==========================================================
     bot.launch()
     .then(() => {
         console.log('🤖 Бот успешно запущен на Amvera в режиме Long Polling!');
-        
-        // ✅ Внедрено: Запуск автоматического туннеля Pinggy
-        startPinggyTunnel(bot); 
+        // ✂️ Туннель Pinggy полностью вырезан, чтобы избежать краша
     })
     .catch(err => console.error('❌ Фатальная ошибка старта Telegraf:', err.message));
 
@@ -665,6 +693,11 @@ if (!/^7\d{10}$/.test(text)) {
 // ==========================================================
 app.get('/', (req, res) => {
     res.send('🚀 AI Haggle Pro Active');
+});
+
+// Хелсчек для Amvera контейнера
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'OK' });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
